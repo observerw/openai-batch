@@ -1,8 +1,3 @@
-# OpenAI Batch API
-
-example usage (`runner.py`):
-
-```python
 import json
 from typing import Iterable
 from openai_batch import (
@@ -11,6 +6,7 @@ from openai_batch import (
     BatchInputItem,
     BatchOutputItem,
 )
+
 
 class Runner(OpenAIBatchRunner):
     @staticmethod
@@ -50,13 +46,3 @@ class Runner(OpenAIBatchRunner):
 
 if __name__ == "__main__":
     Runner().cli()
-
-```
-
-then:
-
-```sh
-python runner.py
-```
-
-A daemon will be started. Within 24 hours, the daemon will automatically download the results and save them.

@@ -33,16 +33,16 @@ class OpenAIBatchRunner:
         """
 
     def _run(self):
-        pass
+        raise NotImplementedError()
 
     def _list(self):
-        pass
+        raise NotImplementedError()
 
     def _remove(self, batch_id: str):
-        pass
+        raise NotImplementedError()
 
     def _status(self, batch_id: str):
-        pass
+        raise NotImplementedError()
 
     def cli(self):
         parser = argparse.ArgumentParser()

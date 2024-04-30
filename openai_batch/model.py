@@ -34,6 +34,8 @@ class BatchErrorItem(BatchError):
 class BatchRequestInputItem(BaseModel):
     """
     Model of line in the input file for the batch request.
+
+    https://platform.openai.com/docs/api-reference/batch/requestInput
     """
 
     custom_id: str
@@ -58,6 +60,8 @@ class BatchRequestInputItem(BaseModel):
 class BatchRequestOutputItem(BaseModel):
     """
     Model of line in the output file for the batch request.
+
+    https://platform.openai.com/docs/api-reference/batch/requestOutput
     """
 
     class Response(BaseModel):
