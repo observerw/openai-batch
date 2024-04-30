@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "openai-batch"
+version = "0.1.0"
+description = ""
+authors = ["observer <wozluohd@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+openai = "^1.23.6"
+pydantic = "^2.7.1"
+apscheduler = "^3.10.4"
+python-daemon = "^3.0.1"
+fastapi = "^0.110.2"
+uvicorn = { version = "^0.29.0", extras = ["standard"] }
+requests = "^2.31.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

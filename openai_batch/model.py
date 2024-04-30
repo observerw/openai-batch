@@ -1,0 +1,107 @@
+from typing import Iterable, Literal, Self
+
+from openai.types.batch_error import BatchError
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.chat.completion_create_params import (
+    CompletionCreateParamsNonStreaming as CompletionCreateParams,
+)
+from openai.types.chat_model import ChatModel
+from pydantic import BaseModel
+
+
+class BatchInputItem(BaseModel):
+    id: str
+    model: ChatModel = "gpt-3.5-turbo"
+    messages: Iterable[ChatCompletionMessageParam]
+
+    temperature: float | None = None
+    max_tokens: int | None = None
+
+
+class BatchOutputItem(BaseModel):
+    batch_id: str
+    id: str
+    status: Literal["success", "failed"]
+    response: str | None = None
+    error: str | None = None
+
+
+class BatchErrorItem(BatchError):
+    batch_id: str
+    id: str
+
+
+class BatchRequestInputItem(BaseModel):
+    """
+    Model of line in the input file for the batch request.
+    """
+
+    custom_id: str
+    method: Literal["POST"] = "POST"
+    url: Literal["/v1/chat/completions"] = "/v1/chat/completions"
+    body: CompletionCreateParams
+
+    @classmethod
+    def from_input(cls, item: BatchInputItem) -> Self:
+        return cls(
+            custom_id=item.id,
+            body=CompletionCreateParams(
+                stream=False,
+                messages=item.messages,
+                model=item.model,
+                temperature=item.temperature,
+                max_tokens=item.max_tokens,
+            ),
+        )
+
+
+class BatchRequestOutputItem(BaseModel):
+    """
+    Model of line in the output file for the batch request.
+    """
+
+    class Response(BaseModel):
+        status_code: int
+        request_id: str
+        body: ChatCompletion
+
+    class Error(BaseModel):
+        code: int
+        message: str
+
+    id: str
+    custom_id: str
+    response: Response | None = None
+    error: Error | None = None
+
+    def to_output(self) -> BatchOutputItem:
+        if self.error:
+            error_message = f"Request failed with error code {self.error.code}: {self.error.message}"
+        elif (resp := self.response) and resp.status_code != 200:
+            error_message = f"Request failed with HTTP status code {resp.status_code}"
+        else:
+            error_message = None
+
+        if not error_message and self.response:
+            response = self.response.body.choices[0].message.content
+        else:
+            response = None
+
+        status = "success" if not error_message else "failed"
+
+        return BatchOutputItem(
+            batch_id=self.custom_id,
+            id=self.id,
+            status=status,
+            response=response,
+            error=error_message,
+        )
+
+
+class BatchStatus(BaseModel):
+    batch_id: str
+    status: Literal["success", "in_progress", "failed"]
+    message: str | None = None
+    # when status is completed, the output_file_id;
+    # when status is failed, the error_file_id
+    file_id: str | None = None
