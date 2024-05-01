@@ -3,13 +3,25 @@ import os
 from abc import abstractmethod
 from typing import Iterable
 
-from .model import BatchErrorItem, BatchInputItem, BatchOutputItem
+from .model import (
+    BatchErrorItem,
+    BatchInputItem,
+    BatchOutputItem,
+    Notification,
+)
+from .worker import Worker, run_worker
 
 
 class OpenAIBatchRunner:
-    def __init__(self, openai_key: str | None = None) -> None:
+    def __init__(
+        self,
+        openai_key: str | None = None,
+        notification: Notification | None = None,
+    ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
+
+        self.notification = notification
 
     @staticmethod
     @abstractmethod
@@ -33,7 +45,12 @@ class OpenAIBatchRunner:
         """
 
     def _run(self):
-        raise NotImplementedError()
+        worker = Worker(
+            cls=self.__class__,
+            notification=self.notification,
+        )
+
+        run_worker(worker)
 
     def _list(self):
         raise NotImplementedError()

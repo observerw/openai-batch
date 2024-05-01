@@ -1,21 +1,47 @@
-from typing import Iterable, Literal, Self
+from typing import Iterable, Literal, Union
 
 from openai.types.batch_error import BatchError
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.chat.chat_completion_tool_choice_option_param import (
+    ChatCompletionToolChoiceOptionParam,
+)
+from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 from openai.types.chat.completion_create_params import (
     CompletionCreateParamsNonStreaming as CompletionCreateParams,
 )
+from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic_core import Url
 
 
 class BatchInputItem(BaseModel):
     id: str
-    model: ChatModel = "gpt-3.5-turbo"
     messages: Iterable[ChatCompletionMessageParam]
 
-    temperature: float | None = None
+    model: ChatModel = "gpt-3.5-turbo"
+    frequency_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
+    logit_bias: dict[str, int] | None = None
+    logprobs: bool | None = None
     max_tokens: int | None = None
+    n: int | None = 1
+    presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
+    response_format: ResponseFormat = {}
+    seed: int | None = None
+    stop: Union[str, list[str], None] = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    tool_choice: ChatCompletionToolChoiceOptionParam = "none"
+    tools: Iterable[ChatCompletionToolParam] = Field(default=[], max_length=128)
+    top_logprobs: int | None = Field(default=None, ge=0, le=20)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    user: str | None = None
+
+    @model_validator(mode="after")
+    def _validate(self):
+        if self.top_logprobs and not self.logprobs:
+            raise ValueError("top_logprobs requires logprobs to be enabled")
+
+        return self
 
 
 class BatchOutputItem(BaseModel):
@@ -44,16 +70,10 @@ class BatchRequestInputItem(BaseModel):
     body: CompletionCreateParams
 
     @classmethod
-    def from_input(cls, item: BatchInputItem) -> Self:
+    def from_input(cls, item: BatchInputItem) -> "BatchRequestInputItem":
         return cls(
             custom_id=item.id,
-            body=CompletionCreateParams(
-                stream=False,
-                messages=item.messages,
-                model=item.model,
-                temperature=item.temperature,
-                max_tokens=item.max_tokens,
-            ),
+            body=CompletionCreateParams(**item.model_dump(exclude={"id"})),
         )
 
 
@@ -100,6 +120,21 @@ class BatchRequestOutputItem(BaseModel):
             response=response,
             error=error_message,
         )
+
+
+class Notification(BaseModel):
+    method: Literal["email", "webhook"]
+    address: Url | EmailStr
+
+    @model_validator(mode="after")
+    def _validate(self):
+        match (self.method, self.address):
+            case ("email", EmailStr()) | ("webhook", Url()):
+                pass
+            case _:
+                raise ValueError("Invalid notification method and address combination")
+
+        return self
 
 
 class BatchStatus(BaseModel):

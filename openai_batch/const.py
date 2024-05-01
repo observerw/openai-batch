@@ -1,0 +1,4 @@
+K = 1024
+M = 1024 * K
+CHUNK_SIZE = 16 * M
+MAX_FILE_SIZE = 512 * M

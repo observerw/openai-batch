@@ -1,30 +1,48 @@
+import hashlib
 import os
-from dataclasses import KW_ONLY, dataclass
+import tempfile
 from datetime import datetime, timedelta
-from multiprocessing import Process
 from time import sleep
-from typing import Iterable, Literal
+from typing import IO, Iterable, Tuple
 
 import daemon
+import daemon.pidfile
 import openai
 
-from .model import BatchErrorItem, BatchRequestOutputItem, BatchStatus
+from .const import CHUNK_SIZE, MAX_FILE_SIZE
+from .model import (
+    BatchErrorItem,
+    BatchInputItem,
+    BatchRequestInputItem,
+    BatchRequestOutputItem,
+    BatchStatus,
+    Notification,
+)
 from .runner import OpenAIBatchRunner
 
 
-@dataclass
 class Worker:
-    _: KW_ONLY
-
     id: str
     batch_ids: set[str]
-
     cls: type[OpenAIBatchRunner]
-    created: datetime
-    completion_window: timedelta = timedelta(hours=24)
 
-    notify_method: Literal["email", "webhook"] | None = None
-    address: str | None = None
+    created: datetime
+    completion_window: timedelta
+    notification: Notification | None
+
+    def __init__(
+        self,
+        cls: type[OpenAIBatchRunner],
+        notification: Notification | None = None,
+        completion_window: timedelta = timedelta(hours=24),
+    ) -> None:
+        self.cls = cls
+        batch_input = self.cls.upload()
+        self.id, self.batch_ids = self.upload(batch_input)  # TODO exit on same id
+
+        self.notification = notification
+        self.created = datetime.now()
+        self.completion_window = completion_window
 
     def check(self) -> Iterable[BatchStatus]:
         batch_ids_to_retrieve = [*self.batch_ids]
@@ -74,7 +92,56 @@ class Worker:
 
         return statuses
 
-    def save(self, file_ids: Iterable[str]):
+    @staticmethod
+    def upload(batch_input: Iterable[BatchInputItem]) -> Tuple[str, set[str]]:
+        hasher = hashlib.sha1()
+
+        temp_files: list[IO[bytes]] = []
+        total_file_size = 0
+        curr_file = tempfile.TemporaryFile(buffering=CHUNK_SIZE)
+        curr_file_size = 0
+
+        for item in batch_input:
+            request_item = BatchRequestInputItem.from_input(item)
+            json = f"{request_item.model_dump_json()}\n".encode()
+            hasher.update(json)
+            total_file_size += len(json)
+
+            if curr_file_size + len(json) > MAX_FILE_SIZE:
+                temp_files.append(curr_file)
+                curr_file = tempfile.TemporaryFile()
+                curr_file_size = 0
+
+            curr_file.write(json)
+
+        if curr_file_size > 0:
+            temp_files.append(curr_file)
+
+        id = hasher.hexdigest()
+
+        files = [
+            openai.files.create(
+                file=file,
+                purpose="batch",  # type: ignore
+            )
+            for file in temp_files
+        ]
+
+        for file in temp_files:
+            file.close()
+
+        batches = [
+            openai.batches.create(
+                input_file_id=file.id,
+                completion_window="24h",
+                endpoint="/v1/chat/completions",
+            )
+            for file in files
+        ]
+
+        return id, {batch.id for batch in batches}
+
+    def download(self, file_ids: Iterable[str]):
         for file_id in file_ids:
             content = openai.files.content(file_id)
             lines = (line for line in content.iter_lines())
@@ -84,7 +151,7 @@ class Worker:
             )
             self.cls.download(items)
 
-    def save_error(self, file_ids: Iterable[str]):
+    def download_error(self, file_ids: Iterable[str]):
         for file_id in file_ids:
             content = openai.files.content(file_id)
             lines = (line for line in content.iter_lines())
@@ -102,13 +169,14 @@ class Worker:
         cwd = os.path.dirname(os.path.realpath(__file__))
         os.chdir(cwd)
 
-        while True:
+        while self.created + self.completion_window > datetime.now():
             sleep(60 * 60 * 2)
             self.run_once()
 
+        # TODO
+
 
 def run_worker(worker: Worker):
-    with daemon.DaemonContext(pidfile=f"/var/run/OpenAIBatch-{worker.id}.pid"):
-        p = Process(target=worker.run)
-        p.start()
-        p.join()
+    cwd = os.path.dirname(os.path.realpath(__file__))
+    with daemon.DaemonContext(working_directory=cwd):
+        worker.run()
