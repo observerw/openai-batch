@@ -3,19 +3,11 @@
 example usage (`runner.py`):
 
 ```python
-import json
-from typing import Iterable
-from openai_batch import (
-    OpenAIBatchRunner,
-    BatchErrorItem,
-    BatchInputItem,
-    BatchOutputItem,
-)
-
 class Runner(OpenAIBatchRunner):
     @staticmethod
     def upload() -> Iterable[BatchInputItem]:
         with open("data.jsonl", "r", encoding="utf-8") as f:
+            # each line is a JSON object like {"id": "1", "content": "Hello!"}
             for line in f:
                 data = json.loads(line)
                 yield BatchInputItem(
@@ -34,15 +26,15 @@ class Runner(OpenAIBatchRunner):
 
     @staticmethod
     def download(output: Iterable[BatchOutputItem]):
-        with open("completed.jsonl", "w", encoding="utf-8") as f:
+        with open("result.jsonl", "w", encoding="utf-8") as f:
             for item in output:
                 if item.status == "success":
                     f.write(f"{item.model_dump_json()}\n")
                 else:
-                    print(f"Request {item.id} failed: {item.error}")
+                    logging.error(f"Request {item.id} failed: {item.error}")
 
     @staticmethod
-    def download_error(output: Iterable[BatchErrorItem]) -> None:
+    def download_error(output: Iterable[BatchErrorItem]):
         with open("errors.jsonl", "a", encoding="utf-8") as f:
             for item in output:
                 f.write(f"{item.model_dump_json()}\n")
@@ -50,7 +42,6 @@ class Runner(OpenAIBatchRunner):
 
 if __name__ == "__main__":
     Runner().cli()
-
 ```
 
 then:

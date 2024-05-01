@@ -170,9 +170,6 @@ class Worker:
         raise NotImplementedError()
 
     def run(self):
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        os.chdir(cwd)
-
         while self.created + self.completion_window > datetime.now():
             sleep(60 * 60 * 2)
             self.run_once()
