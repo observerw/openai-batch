@@ -16,6 +16,7 @@ from .model import (
     BatchRequestInputItem,
     BatchRequestOutputItem,
     BatchStatus,
+    Config,
     Notification,
 )
 from .runner import OpenAIBatchRunner
@@ -29,12 +30,14 @@ class Worker:
     created: datetime
     completion_window: timedelta
     notification: Notification | None
+    config: Config
 
     def __init__(
         self,
         cls: type[OpenAIBatchRunner],
         notification: Notification | None = None,
         completion_window: timedelta = timedelta(hours=24),
+        config: Config = Config(),
     ) -> None:
         self.cls = cls
         batch_input = self.cls.upload()
@@ -43,6 +46,7 @@ class Worker:
         self.notification = notification
         self.created = datetime.now()
         self.completion_window = completion_window
+        self.config = config
 
     def check(self) -> Iterable[BatchStatus]:
         batch_ids_to_retrieve = [*self.batch_ids]

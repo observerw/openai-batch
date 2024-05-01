@@ -7,6 +7,7 @@ from .model import (
     BatchErrorItem,
     BatchInputItem,
     BatchOutputItem,
+    Config,
     Notification,
 )
 from .worker import Worker, run_worker
@@ -17,11 +18,15 @@ class OpenAIBatchRunner:
         self,
         openai_key: str | None = None,
         notification: Notification | None = None,
+        exit_on_duplicate: bool = True,
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
 
         self.notification = notification
+        self.config = Config(
+            exit_on_duplicate=exit_on_duplicate,
+        )
 
     @staticmethod
     @abstractmethod

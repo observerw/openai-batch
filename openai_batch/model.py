@@ -122,6 +122,10 @@ class BatchRequestOutputItem(BaseModel):
         )
 
 
+class Config(BaseModel):
+    exit_on_duplicate: bool = True
+
+
 class Notification(BaseModel):
     method: Literal["email", "webhook"]
     address: Url | EmailStr
