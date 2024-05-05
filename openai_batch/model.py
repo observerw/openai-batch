@@ -1,6 +1,6 @@
+from datetime import timedelta
 from typing import Iterable, Literal, Union
 
-from openai.types.batch_error import BatchError
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from openai.types.chat.chat_completion_tool_choice_option_param import (
     ChatCompletionToolChoiceOptionParam,
@@ -11,8 +11,7 @@ from openai.types.chat.completion_create_params import (
 )
 from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
-from pydantic import BaseModel, EmailStr, Field, model_validator
-from pydantic_core import Url
+from pydantic import BaseModel, Field, model_validator
 
 
 class BatchInputItem(BaseModel):
@@ -52,9 +51,14 @@ class BatchOutputItem(BaseModel):
     error: str | None = None
 
 
-class BatchErrorItem(BatchError):
+class BatchErrorItem(BaseModel):
     batch_id: str
     id: str
+
+    code: str | None = None
+    line: int | None = None
+    message: str | None = None
+    param: str | None = None
 
 
 class BatchRequestInputItem(BaseModel):
@@ -122,25 +126,6 @@ class BatchRequestOutputItem(BaseModel):
         )
 
 
-class Config(BaseModel):
-    exit_on_duplicate: bool = True
-
-
-class Notification(BaseModel):
-    method: Literal["email", "webhook"]
-    address: Url | EmailStr
-
-    @model_validator(mode="after")
-    def _validate(self):
-        match (self.method, self.address):
-            case ("email", EmailStr()) | ("webhook", Url()):
-                pass
-            case _:
-                raise ValueError("Invalid notification method and address combination")
-
-        return self
-
-
 class BatchStatus(BaseModel):
     batch_id: str
     status: Literal["success", "in_progress", "failed"]
@@ -148,3 +133,8 @@ class BatchStatus(BaseModel):
     # when status is completed, the output_file_id;
     # when status is failed, the error_file_id
     file_id: str | None = None
+
+
+class Config(BaseModel):
+    completion_window: timedelta
+    exit_on_duplicate: bool

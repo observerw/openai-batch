@@ -1,8 +1,18 @@
-# OpenAI Batch API
+# (WIP) OpenAI Batch
+
+[Batch API Reference](https://platform.openai.com/docs/api-reference/batch)
 
 example usage (`runner.py`):
 
 ```python
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
+
 class Runner(OpenAIBatchRunner):
     @staticmethod
     def upload() -> Iterable[BatchInputItem]:
@@ -31,13 +41,14 @@ class Runner(OpenAIBatchRunner):
                 if item.status == "success":
                     f.write(f"{item.model_dump_json()}\n")
                 else:
-                    logging.error(f"Request {item.id} failed: {item.error}")
+                    logger.error(f"Request {item.id} failed: {item.error}")
 
     @staticmethod
     def download_error(output: Iterable[BatchErrorItem]):
         with open("errors.jsonl", "a", encoding="utf-8") as f:
             for item in output:
                 f.write(f"{item.model_dump_json()}\n")
+                # or: logger.error(f"Batch task {item.id} failed: {item.error}")
 
 
 if __name__ == "__main__":

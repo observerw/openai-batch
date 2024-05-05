@@ -1,7 +1,8 @@
 import hashlib
+import logging
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from time import sleep
 from typing import IO, Iterable, Tuple
 
@@ -9,6 +10,7 @@ import daemon
 import daemon.pidfile
 import openai
 
+from . import runner
 from .const import CHUNK_SIZE, MAX_FILE_SIZE
 from .model import (
     BatchErrorItem,
@@ -17,35 +19,23 @@ from .model import (
     BatchRequestOutputItem,
     BatchStatus,
     Config,
-    Notification,
 )
-from .runner import OpenAIBatchRunner
+
+logger = logging.getLogger(__name__)
 
 
 class Worker:
-    id: str
-    batch_ids: set[str]
-    cls: type[OpenAIBatchRunner]
-
-    created: datetime
-    completion_window: timedelta
-    notification: Notification | None
-    config: Config
-
     def __init__(
         self,
-        cls: type[OpenAIBatchRunner],
-        notification: Notification | None = None,
-        completion_window: timedelta = timedelta(hours=24),
-        config: Config = Config(),
+        cls: type["runner.OpenAIBatchRunner"],
+        config: Config,
     ) -> None:
         self.cls = cls
+
         batch_input = self.cls.upload()
         self.id, self.batch_ids = self.upload(batch_input)  # TODO exit on same id
 
-        self.notification = notification
         self.created = datetime.now()
-        self.completion_window = completion_window
         self.config = config
 
     def check(self) -> Iterable[BatchStatus]:
@@ -163,21 +153,19 @@ class Worker:
             items = (BatchErrorItem.model_validate_json(line) for line in lines)
             self.cls.download_error(items)
 
-    def notify(self, message: str):
-        raise NotImplementedError()
-
     def run_once(self):
         raise NotImplementedError()
 
     def run(self):
-        while self.created + self.completion_window > datetime.now():
+        while self.created + self.config.completion_window > datetime.now():
             sleep(60 * 60 * 2)
             self.run_once()
 
         # TODO
 
 
-def run_worker(worker: Worker):
+def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
     cwd = os.path.dirname(os.path.realpath(__file__))
     with daemon.DaemonContext(working_directory=cwd):
+        worker = Worker(cls, config)
         worker.run()

@@ -1,4 +1,5 @@
 import argparse
+from datetime import timedelta
 import os
 from abc import abstractmethod
 from typing import Iterable
@@ -8,23 +9,22 @@ from .model import (
     BatchInputItem,
     BatchOutputItem,
     Config,
-    Notification,
 )
-from .worker import Worker, run_worker
+from .worker import run_worker
 
 
 class OpenAIBatchRunner:
     def __init__(
         self,
         openai_key: str | None = None,
-        notification: Notification | None = None,
+        completion_window: timedelta = timedelta(hours=24),
         exit_on_duplicate: bool = True,
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
 
-        self.notification = notification
         self.config = Config(
+            completion_window=completion_window,
             exit_on_duplicate=exit_on_duplicate,
         )
 
@@ -49,13 +49,10 @@ class OpenAIBatchRunner:
         Save errors to a file.
         """
 
-    def _run(self):
-        worker = Worker(
-            cls=self.__class__,
-            notification=self.notification,
-        )
+        return
 
-        run_worker(worker)
+    def _run(self):
+        run_worker(self.__class__, self.config)
 
     def _list(self):
         raise NotImplementedError()

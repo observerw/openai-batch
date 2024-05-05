@@ -1,12 +1,21 @@
 import json
 import logging
 from typing import Iterable
+
 from openai_batch import (
-    OpenAIBatchRunner,
     BatchErrorItem,
     BatchInputItem,
     BatchOutputItem,
+    OpenAIBatchRunner,
 )
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Runner(OpenAIBatchRunner):
@@ -37,7 +46,7 @@ class Runner(OpenAIBatchRunner):
                 if item.status == "success":
                     f.write(f"{item.model_dump_json()}\n")
                 else:
-                    logging.error(f"Request {item.id} failed: {item.error}")
+                    logger.error(f"Request {item.id} failed: {item.error}")
 
     @staticmethod
     def download_error(output: Iterable[BatchErrorItem]):
