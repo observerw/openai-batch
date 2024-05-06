@@ -33,7 +33,7 @@ class TransformResult:
     files: list[IO[bytes]]
 
 
-def transform(batch_input: Iterable[BatchInputItem]) -> TransformResult:
+def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> TransformResult:
     hasher = hashlib.sha1()
 
     files: list[IO[bytes]] = []
@@ -42,7 +42,7 @@ def transform(batch_input: Iterable[BatchInputItem]) -> TransformResult:
     curr_file_size = 0
 
     for item in batch_input:
-        request_item = BatchRequestInputItem.from_input(item)
+        request_item = BatchRequestInputItem.from_input(config, item)
         json = f"{request_item.model_dump_json()}\n".encode()
         hasher.update(json)
         total_file_size += len(json)
@@ -67,7 +67,7 @@ class UploadResult:
     batch_ids: set[str]
 
 
-def upload(files: list[IO[bytes]]) -> UploadResult:
+def upload(config: Config, files: list[IO[bytes]]) -> UploadResult:
     uploaded_files = [
         openai.files.create(
             file=file,
@@ -76,11 +76,13 @@ def upload(files: list[IO[bytes]]) -> UploadResult:
         for file in files
     ]
 
+    # comp_window = config.completion_window
     batches = [
         openai.batches.create(
             input_file_id=file.id,
-            completion_window="24h",
-            endpoint="/v1/chat/completions",
+            # completion_window=f"{comp_window.days}d{comp_window.seconds}s",
+            completion_window="24h",  # FIXME
+            endpoint=config.endpoint,
         )
         for file in uploaded_files
     ]
@@ -185,11 +187,11 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
     cwd = os.path.dirname(os.path.realpath(__file__))
     with daemon.DaemonContext(working_directory=cwd):
         batch_input = cls.upload()
-        transform_result = transform(batch_input)
+        transform_result = transform(config=config, batch_input=batch_input)
         id = transform_result.id
 
         def run():
-            upload_result = upload(transform_result.files)
+            upload_result = upload(config=config, files=transform_result.files)
             Worker(
                 config=config,
                 created=upload_result.created,
