@@ -11,6 +11,7 @@ openai = "^1.23.6"
 pydantic = "^2.7.1"
 python-daemon = "^3.0.1"
 email-validator = "^2.1.1"
+python-pidfile = "^3.1.1"
 
 
 [build-system]
