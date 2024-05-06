@@ -18,6 +18,8 @@ class BatchInputItem(BaseModel):
     id: str
     messages: Iterable[ChatCompletionMessageParam]
 
+    method: Literal["POST"] = "POST"
+    url: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
     model: ChatModel = "gpt-3.5-turbo"
     frequency_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
     logit_bias: dict[str, int] | None = None
@@ -70,14 +72,18 @@ class BatchRequestInputItem(BaseModel):
 
     custom_id: str
     method: Literal["POST"] = "POST"
-    url: Literal["/v1/chat/completions"] = "/v1/chat/completions"
+    url: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
     body: CompletionCreateParams
 
     @classmethod
     def from_input(cls, item: BatchInputItem) -> "BatchRequestInputItem":
         return cls(
             custom_id=item.id,
-            body=CompletionCreateParams(**item.model_dump(exclude={"id"})),
+            method=item.method,
+            url=item.url,
+            body=CompletionCreateParams(
+                **item.model_dump(exclude={"id", "method", "url"})
+            ),
         )
 
 

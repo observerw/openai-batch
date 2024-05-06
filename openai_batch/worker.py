@@ -63,8 +63,8 @@ def transform(batch_input: Iterable[BatchInputItem]) -> TransformResult:
 
 @dataclass
 class UploadResult:
-    batch_ids: set[str]
     created: datetime
+    batch_ids: set[str]
 
 
 def upload(files: list[IO[bytes]]) -> UploadResult:
