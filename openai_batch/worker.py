@@ -186,15 +186,24 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
     with daemon.DaemonContext(working_directory=cwd):
         batch_input = cls.upload()
         transform_result = transform(batch_input)
-        try:
-            with pidfile.PIDFile(f"/var/run/OpenAI_Batch_{transform_result.id}.pid"):
-                upload_result = upload(transform_result.files)
-                Worker(
-                    config=config,
-                    created=upload_result.created,
-                    batch_ids=upload_result.batch_ids,
-                    download=cls.download,
-                    download_error=cls.download_error,
-                ).run()
-        except pidfile.AlreadyRunningError:
-            pass
+        id = transform_result.id
+
+        def run():
+            upload_result = upload(transform_result.files)
+            Worker(
+                config=config,
+                created=upload_result.created,
+                batch_ids=upload_result.batch_ids,
+                download=cls.download,
+                download_error=cls.download_error,
+            ).run()
+
+        if config.exit_on_duplicate:
+            try:
+                with pidfile.PIDFile(f"/var/run/OpenAI_Batch_{id}.pid"):
+                    run()
+            except pidfile.AlreadyRunningError:
+                logger.error(f"work {id} is already running, exiting.")
+                exit(0)
+        else:
+            run()
