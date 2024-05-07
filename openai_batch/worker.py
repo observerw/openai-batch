@@ -47,6 +47,7 @@ def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> Transfor
 
         if curr_file_size + len(json) > MAX_FILE_SIZE:
             curr_file.seek(0)
+            curr_file.flush()
             files.append(curr_file)
             curr_file = tempfile.TemporaryFile()
             curr_file_size = 0

@@ -43,7 +43,6 @@ class OpenAIBatchRunner:
         """
 
     @staticmethod
-    @abstractmethod
     def download_error(output: Iterable[BatchErrorItem]) -> None:
         """
         Save errors to a file.
