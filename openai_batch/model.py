@@ -40,6 +40,7 @@ class BatchInputItem(BaseModel):
     top_logprobs: int | None = Field(default=None, ge=0, le=20)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
     user: str | None = None
+    stream: Literal[False] | None = None
 
     @model_validator(mode="after")
     def _validate(self):

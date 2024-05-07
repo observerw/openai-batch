@@ -37,7 +37,6 @@ def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> Transfor
     hasher = hashlib.sha1()
 
     files: list[IO[bytes]] = []
-    total_file_size = 0
     curr_file = tempfile.TemporaryFile(buffering=CHUNK_SIZE)
     curr_file_size = 0
 
@@ -45,16 +44,18 @@ def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> Transfor
         request_item = BatchRequestInputItem.from_input(config, item)
         json = f"{request_item.model_dump_json()}\n".encode()
         hasher.update(json)
-        total_file_size += len(json)
 
         if curr_file_size + len(json) > MAX_FILE_SIZE:
+            curr_file.seek(0)
             files.append(curr_file)
             curr_file = tempfile.TemporaryFile()
             curr_file_size = 0
 
+        curr_file_size += len(json)
         curr_file.write(json)
 
     if curr_file_size > 0:
+        curr_file.seek(0)
         files.append(curr_file)
 
     id = hasher.hexdigest()
