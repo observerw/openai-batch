@@ -1,7 +1,9 @@
 import argparse
-from datetime import timedelta
 import os
+import signal
 from abc import abstractmethod
+from datetime import timedelta
+from pathlib import Path
 from typing import Iterable
 
 from .model import (
@@ -56,10 +58,18 @@ class OpenAIBatchRunner:
     def _list(self):
         raise NotImplementedError()
 
-    def _remove(self, batch_id: str):
-        raise NotImplementedError()
+    def _remove(self, work_id: str):
+        pidfile_path = Path(f"/var/run/OpenAI_Batch_{work_id}.pid")
 
-    def _status(self, batch_id: str):
+        if not pidfile_path.exists():
+            print(f"work {work_id} not found")
+            return
+
+        pid = int(pidfile_path.read_text())
+        os.kill(pid, signal.SIGINT)
+        print(f"work {work_id} removed")
+
+    def _status(self, work_id: str):
         raise NotImplementedError()
 
     def cli(self):
@@ -67,28 +77,28 @@ class OpenAIBatchRunner:
 
         args = parser.parse_args()
 
-        # -l --list list all batch tasks
+        # -l --list list all batch works
         parser.add_argument(
             "-l",
             "--list",
             action="store_true",
-            help="List all batches",
+            help="List all works",
         )
 
-        # -r --remove remove a batch task
+        # -r --remove remove a work
         parser.add_argument(
             "-r",
             "--remove",
             type=str,
-            help="Remove a batch",
+            help="Remove a work",
         )
 
-        # -s --status get the status of a batch task
+        # -s --status get the status of a work
         parser.add_argument(
             "-s",
             "--status",
             type=str,
-            help="Get the status of a batch",
+            help="Get the status of a work",
         )
 
         args = parser.parse_args()

@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import signal
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -208,21 +209,29 @@ class Worker:
 
 def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
     cwd = os.path.dirname(os.path.realpath(__file__))
-    with daemon.DaemonContext(working_directory=cwd):
+    with daemon.DaemonContext(working_directory=cwd) as context:
         batch_input = cls.upload()
         transform_result = transform(config=config, batch_input=batch_input)
         id = transform_result.id
 
         def run():
             upload_result = upload(config=config, files=transform_result.files)
-            Worker(
+            worker = Worker(
                 id=id,
                 config=config,
                 created=upload_result.created,
                 batch_ids=upload_result.batch_ids,
                 download=cls.download,
                 download_error=cls.download_error,
-            ).run()
+            )
+
+            # clean up on process termination
+            context.signal_map = {
+                signal.SIGTERM: worker.clean_up,
+                signal.SIGINT: worker.clean_up,
+            }
+
+            worker.run()
 
         if config.exit_on_duplicate:
             try:
