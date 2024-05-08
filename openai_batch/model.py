@@ -12,6 +12,7 @@ from openai.types.chat.completion_create_params import (
 from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
 from pydantic import BaseModel, Field, model_validator
+from openai.types.batch import Batch
 
 
 class Config(BaseModel):
@@ -140,9 +141,31 @@ class BatchRequestOutputItem(BaseModel):
 
 
 class BatchStatus(BaseModel):
+    batch: Batch | None
     batch_id: str
     status: Literal["success", "in_progress", "failed"]
     message: str | None = None
     # when status is completed, the output_file_id;
     # when status is failed, the error_file_id
     file_id: str | None = None
+
+    @classmethod
+    def from_batch(cls, batch: Batch) -> "BatchStatus":
+        match batch.status:
+            case "completed":
+                status = "success"
+                file_id = batch.output_file_id
+            case "failed" | "cancelled" | "expired":
+                status = "failed"
+                file_id = batch.error_file_id
+            case _:
+                status = "in_progress"
+                file_id = None
+
+        return cls(
+            batch=batch,
+            batch_id=batch.id,
+            status=status,
+            message=batch.status,
+            file_id=file_id,
+        )
