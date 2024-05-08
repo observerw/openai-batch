@@ -21,6 +21,7 @@ class OpenAIBatchRunner:
         openai_key: str | None = None,
         completion_window: timedelta = timedelta(hours=24),
         exit_on_duplicate: bool = True,
+        clean_up: bool = True,
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
@@ -28,6 +29,7 @@ class OpenAIBatchRunner:
         self.config = Config(
             completion_window=completion_window,
             exit_on_duplicate=exit_on_duplicate,
+            clean_up=clean_up,
         )
 
     @staticmethod

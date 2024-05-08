@@ -19,6 +19,7 @@ class Config(BaseModel):
     completion_window: timedelta = timedelta(hours=24)
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
     exit_on_duplicate: bool
+    clean_up: bool
 
 
 class BatchInputItem(BaseModel):

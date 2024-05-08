@@ -205,7 +205,9 @@ class Worker:
         while self.created + self.config.completion_window > datetime.now():
             sleep(60 * 60 * 2)
             self.run_once()
-        self.clean_up()
+
+        if self.config.clean_up:
+            self.clean_up()
 
         logger.info(f"work {self.id} finished")
 
@@ -229,10 +231,11 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
             )
 
             # clean up on process termination
-            context.signal_map = {
-                signal.SIGTERM: worker.clean_up,
-                signal.SIGINT: worker.clean_up,
-            }
+            if config.clean_up:
+                context.signal_map = {
+                    signal.SIGTERM: worker.clean_up,
+                    signal.SIGINT: worker.clean_up,
+                }
 
             worker.run()
 
