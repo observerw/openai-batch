@@ -9,7 +9,6 @@ from time import sleep
 from typing import IO, Callable, Iterable
 
 import daemon
-import daemon.pidfile
 import openai
 import pidfile
 
@@ -115,35 +114,29 @@ class Worker:
         self._download_error = download_error
 
     def check(self) -> Iterable[BatchStatus]:
-        batch_ids_to_retrieve = [*self.batch_ids_remaining]
         cursor = openai.batches.list(limit=100)
         statuses: list[BatchStatus] = []
 
-        while cursor.has_next_page():
-            cursor = cursor.get_next_page()
-            for batch in cursor.data:
-                if batch.id not in batch_ids_to_retrieve:
-                    continue
+        for batch in cursor:
+            if batch.id in self.batch_ids_remaining:
+                statuses.append(BatchStatus.from_batch(batch))
 
-                status = BatchStatus.from_batch(batch)
+            if len(statuses) == len(self.batch_ids_remaining):
+                break
 
-                statuses.append(status)
+        found_ids = {status.batch_id for status in statuses}
+        not_found_ids = self.batch_ids_remaining - found_ids
 
-                batch_ids_to_retrieve.remove(batch.id)
-                if len(batch_ids_to_retrieve) == 0:
-                    break
-
-        if len(batch_ids_to_retrieve) > 0:
-            for batch_id in batch_ids_to_retrieve:
-                statuses.append(
-                    BatchStatus(
-                        batch=None,
-                        batch_id=batch_id,
-                        status="failed",
-                        message="not found",
-                        file_id=None,
-                    )
+        for batch_id in not_found_ids:
+            statuses.append(
+                BatchStatus(
+                    batch=None,
+                    batch_id=batch_id,
+                    status="failed",
+                    message="not found",
+                    file_id=None,
                 )
+            )
 
         return statuses
 
