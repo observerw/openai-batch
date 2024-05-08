@@ -160,18 +160,28 @@ class Worker:
 
     def run_once(self):
         statuses = self.check()
-        output_file_ids = []
-        error_file_ids = []
+
+        output_file_ids: list[str] = []
+        error_file_ids: list[str] = []
 
         for status in statuses:
             match status:
-                case BatchStatus(batch_id=batch_id, status="success", file_id=file_id):
+                case BatchStatus(
+                    batch_id=batch_id,
+                    status="success",
+                    file_id=str() as file_id,
+                ):
                     output_file_ids.append(file_id)
                     self.batch_ids_remaining.remove(batch_id)
                     logger.info(
-                        f"batch {batch_id} completed, remaining: {len(self.batch_ids_remaining)}/{len(self.batch_ids)}"
+                        f"batch {batch_id} completed, remaining: "
+                        f"{len(self.batch_ids_remaining)}/{len(self.batch_ids)}"
                     )
-                case BatchStatus(batch_id=batch_id, status="failed", file_id=file_id):
+                case BatchStatus(
+                    batch_id=batch_id,
+                    status="failed",
+                    file_id=str() as file_id,
+                ):
                     error_file_ids.append(file_id)
                     self.batch_ids_remaining.remove(batch_id)
                     logger.error(f"batch {batch_id} failed: {status.message}")
