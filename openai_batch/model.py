@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from typing import Iterable, Literal, Union
 
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
@@ -20,6 +21,7 @@ class Config(BaseModel):
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
     exit_on_duplicate: bool
     clean_up: bool
+    save_path: Path
 
 
 class BatchInputItem(BaseModel):

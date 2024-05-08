@@ -22,6 +22,7 @@ class OpenAIBatchRunner:
         completion_window: timedelta = timedelta(hours=24),
         exit_on_duplicate: bool = True,
         clean_up: bool = True,
+        save_path: Path | str = Path.home() / ".openai_batch",
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
@@ -30,6 +31,7 @@ class OpenAIBatchRunner:
             completion_window=completion_window,
             exit_on_duplicate=exit_on_duplicate,
             clean_up=clean_up,
+            save_path=Path(save_path),
         )
 
     @staticmethod
