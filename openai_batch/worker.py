@@ -139,7 +139,7 @@ class Worker:
                         batch=None,
                         batch_id=batch_id,
                         status="failed",
-                        message="not_found",
+                        message="not found",
                         file_id=None,
                     )
                 )
@@ -190,7 +190,7 @@ class Worker:
 
         for status in statuses:
             if status.batch:
-                openai.files.delete(status.batch.id)
+                openai.files.delete(status.batch.input_file_id)
 
         if self.batch_ids_remaining:
             logger.error(f"unexpected batches remaining: {self.batch_ids_remaining}")
