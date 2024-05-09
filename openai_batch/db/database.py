@@ -30,9 +30,10 @@ class OpenAIBatchDatabase:
                 statement = statement.where(schema.Work.status in statuses)
 
             works = session.exec(statement).all()
-            return works
 
-    def delete_work(self, work_id: int):
+        return works
+
+    def delete_work(self, work_id: int) -> schema.Work | None:
         with Session(self.engine) as session:
             work = session.exec(
                 select(schema.Work).where(schema.Work.id == work_id)
@@ -42,6 +43,8 @@ class OpenAIBatchDatabase:
                 session.delete(work)
 
             session.commit()
+
+        return work
 
     @contextlib.contextmanager
     def update_work(self, work_id: int):
@@ -59,11 +62,5 @@ class OpenAIBatchDatabase:
             session.commit()
 
     def update_work_status(self, work_id: int, status: schema.WorkStatus):
-        with Session(self.engine) as session:
-            work = session.exec(
-                select(schema.Work).where(schema.Work.id == work_id)
-            ).one()
-
+        with self.update_work(work_id) as work:
             work.status = status
-            session.add(work)
-            session.commit()
