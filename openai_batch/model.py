@@ -1,7 +1,7 @@
 from datetime import timedelta
-from pathlib import Path
 from typing import Iterable, Literal, Union
 
+from openai.types.batch import Batch
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from openai.types.chat.chat_completion_tool_choice_option_param import (
     ChatCompletionToolChoiceOptionParam,
@@ -13,15 +13,13 @@ from openai.types.chat.completion_create_params import (
 from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
 from pydantic import BaseModel, Field, model_validator
-from openai.types.batch import Batch
 
 
 class Config(BaseModel):
-    completion_window: timedelta = timedelta(hours=24)
+    completion_window: timedelta
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
-    exit_on_duplicate: bool
+    allow_same_dataset: bool
     clean_up: bool
-    save_path: Path
 
 
 class BatchInputItem(BaseModel):

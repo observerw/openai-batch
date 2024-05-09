@@ -20,18 +20,16 @@ class OpenAIBatchRunner:
         self,
         openai_key: str | None = None,
         completion_window: timedelta = timedelta(hours=24),
-        exit_on_duplicate: bool = True,
+        allow_same_dataset: bool = False,
         clean_up: bool = True,
-        save_path: Path | str = Path.home() / ".openai_batch",
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
 
         self.config = Config(
             completion_window=completion_window,
-            exit_on_duplicate=exit_on_duplicate,
+            allow_same_dataset=allow_same_dataset,
             clean_up=clean_up,
-            save_path=Path(save_path),
         )
 
     @staticmethod
