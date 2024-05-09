@@ -52,7 +52,7 @@ class Runner(OpenAIBatchRunner):
 
 
 if __name__ == "__main__":
-    Runner().cli()
+    Runner().run()
 ```
 
 then:
