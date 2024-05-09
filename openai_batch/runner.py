@@ -1,16 +1,15 @@
-import argparse
 import os
-import signal
 from abc import abstractmethod
 from datetime import timedelta
-from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
 
+from .config import OpenAIBatchConfig
+from .db.database import OpenAIBatchDatabase
 from .model import (
     BatchErrorItem,
     BatchInputItem,
     BatchOutputItem,
-    Config,
+    WorkConfig,
 )
 from .worker import run_worker
 
@@ -19,18 +18,27 @@ class OpenAIBatchRunner:
     def __init__(
         self,
         openai_key: str | None = None,
+        name: str | None = None,
         completion_window: timedelta = timedelta(hours=24),
+        endpoint: Literal[
+            "/v1/chat/completions",
+            "/v1/embeddings",
+        ] = "/v1/chat/completions",
         allow_same_dataset: bool = False,
         clean_up: bool = True,
     ) -> None:
         if openai_key:
             os.environ["OPENAI_KEY"] = openai_key
 
-        self.config = Config(
+        self.config = OpenAIBatchConfig.load()
+        self.work_config = WorkConfig(
+            name=name,
             completion_window=completion_window,
+            endpoint=endpoint,
             allow_same_dataset=allow_same_dataset,
             clean_up=clean_up,
         )
+        self.db = OpenAIBatchDatabase(self.config.db_path)
 
     @staticmethod
     @abstractmethod
@@ -54,65 +62,6 @@ class OpenAIBatchRunner:
 
         return
 
-    def _run(self):
-        run_worker(self.__class__, self.config)
-
-    def _list(self):
-        raise NotImplementedError()
-
-    def _remove(self, work_id: str):
-        pidfile_path = Path(f"/var/run/OpenAI_Batch_{work_id}.pid")
-
-        if not pidfile_path.exists():
-            print(f"work {work_id} not found")
-            return
-
-        pid = int(pidfile_path.read_text())
-        os.kill(pid, signal.SIGINT)
-        print(f"work {work_id} removed")
-
-    def _status(self, work_id: str):
-        raise NotImplementedError()
-
-    def cli(self):
-        parser = argparse.ArgumentParser()
-
-        args = parser.parse_args()
-
-        # -l --list list all batch works
-        parser.add_argument(
-            "-l",
-            "--list",
-            action="store_true",
-            help="List all works",
-        )
-
-        # -r --remove remove a work
-        parser.add_argument(
-            "-r",
-            "--remove",
-            type=str,
-            help="Remove a work",
-        )
-
-        # -s --status get the status of a work
-        parser.add_argument(
-            "-s",
-            "--status",
-            type=str,
-            help="Get the status of a work",
-        )
-
-        args = parser.parse_args()
-
-        if not any(vars(args).values()):
-            self._run()
-        elif args.list:
-            self._list()
-        elif args.remove:
-            self._remove(args.remove)
-        elif args.status:
-            self._status(args.status)
-        else:
-            parser.print_help()
-            exit(1)
+    def run(self):
+        work = run_worker(self.__class__, self.work_config, self.db)
+        print(f"work {work.id} started")

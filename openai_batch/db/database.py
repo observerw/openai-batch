@@ -1,38 +1,26 @@
+import contextlib
+from pathlib import Path
 from typing import Iterable
 
+import sqlalchemy
+import sqlalchemy.exc
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
-from ..model import Config
 from . import schema
 
 
 class OpenAIBatchDatabase:
-    def __init__(self, config: Config, database: str) -> None:
-        self.config = config
+    def __init__(self, database: Path) -> None:
         self.engine = create_engine(f"sqlite:///{database}")
         SQLModel.metadata.create_all(self.engine)
 
-    def create_work(self, work: schema.Work):
+    def create_work(self, work: schema.Work) -> schema.Work:
         with Session(self.engine) as session:
-            if self.config.allow_same_dataset and (
-                (
-                    exist_work := session.exec(
-                        select(schema.Work).where(
-                            schema.Work.dataset_hash == work.dataset_hash
-                        )
-                    ).first()
-                )
-                is not None
-            ):
-                raise ValueError(
-                    f"work with dataset hash: "
-                    f"{exist_work.dataset_hash}"
-                    "already exists"
-                )
-
             session.add(work)
             session.commit()
+
+        return work
 
     def list_works(self, statuses: set[str] | None = None) -> Iterable[schema.Work]:
         with Session(self.engine) as session:
@@ -53,4 +41,29 @@ class OpenAIBatchDatabase:
             if work:
                 session.delete(work)
 
+            session.commit()
+
+    @contextlib.contextmanager
+    def update_work(self, work_id: int):
+        with Session(self.engine) as session:
+            try:
+                work = session.exec(
+                    select(schema.Work).where(schema.Work.id == work_id)
+                ).one()
+            except sqlalchemy.exc.NoResultFound:
+                raise ValueError(f"work with id: {work_id} not found")
+
+            yield work
+
+            session.add(work)
+            session.commit()
+
+    def update_work_status(self, work_id: int, status: schema.WorkStatus):
+        with Session(self.engine) as session:
+            work = session.exec(
+                select(schema.Work).where(schema.Work.id == work_id)
+            ).one()
+
+            work.status = status
+            session.add(work)
             session.commit()

@@ -10,10 +10,14 @@ from typing import IO, Callable, Iterable
 
 import daemon
 import openai
-import pidfile
+import sqlalchemy
+import sqlalchemy.exc
+
+from openai_batch.db import schema
 
 from . import runner
 from .const import CHUNK_SIZE, MAX_FILE_SIZE
+from .db.database import OpenAIBatchDatabase
 from .model import (
     BatchErrorItem,
     BatchInputItem,
@@ -21,7 +25,7 @@ from .model import (
     BatchRequestInputItem,
     BatchRequestOutputItem,
     BatchStatus,
-    Config,
+    WorkConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,11 +33,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformResult:
-    id: str
+    dataset_hash: str
     files: list[IO[bytes]]
 
 
-def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> TransformResult:
+def transform(
+    config: WorkConfig, batch_input: Iterable[BatchInputItem]
+) -> TransformResult:
     hasher = hashlib.sha1()
 
     files: list[IO[bytes]] = []
@@ -59,8 +65,8 @@ def transform(config: Config, batch_input: Iterable[BatchInputItem]) -> Transfor
         curr_file.seek(0)
         files.append(curr_file)
 
-    id = hasher.hexdigest()
-    return TransformResult(id=id, files=files)
+    dataset_hash: str = hasher.hexdigest()
+    return TransformResult(dataset_hash=dataset_hash, files=files)
 
 
 @dataclass
@@ -69,7 +75,7 @@ class UploadResult:
     batch_ids: set[str]
 
 
-def upload(config: Config, files: list[IO[bytes]]) -> UploadResult:
+def upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
     uploaded_files = [
         openai.files.create(
             file=file,
@@ -98,14 +104,16 @@ def upload(config: Config, files: list[IO[bytes]]) -> UploadResult:
 class Worker:
     def __init__(
         self,
-        id: str,
-        config: Config,
+        id: int,
+        db: OpenAIBatchDatabase,
+        config: WorkConfig,
         created: datetime,
         batch_ids: set[str],
         download: Callable[[Iterable[BatchOutputItem]], None],
         download_error: Callable[[Iterable[BatchErrorItem]], None],
     ) -> None:
         self.id = id
+        self.db = db
         self.config = config
         self.created = created
         self.batch_ids = batch_ids
@@ -190,6 +198,7 @@ class Worker:
         self.download_error(error_file_ids)
 
     def clean_up(self):
+        logger.info(f"cleaning up work {self.id}")
         statuses = self.check()
 
         for status in statuses:
@@ -201,50 +210,72 @@ class Worker:
 
     def run(self):
         logger.info(f"work {self.id} started")
+        self.db.update_work_status(self.id, schema.WorkStatus.Running)
 
         while self.created + self.config.completion_window > datetime.now():
             sleep(60 * 60 * 2)
-            self.run_once()
-
-        if self.config.clean_up:
-            self.clean_up()
+            try:
+                self.run_once()
+            except Exception as e:
+                logger.error(f"work {self.id} failed: {e}")
+                self.db.update_work_status(self.id, schema.WorkStatus.Failed)
+                return
+            finally:
+                if self.config.clean_up:
+                    self.clean_up()
 
         logger.info(f"work {self.id} finished")
+        self.db.update_work_status(self.id, schema.WorkStatus.Completed)
 
 
-def run_worker(cls: type["runner.OpenAIBatchRunner"], config: Config):
+def run_worker(
+    cls: type["runner.OpenAIBatchRunner"],
+    config: WorkConfig,
+    db: OpenAIBatchDatabase,
+) -> schema.Work:
+    db_work = db.create_work(
+        schema.Work(
+            name=config.name,
+            created_at=datetime.now(),
+        ),
+    )
+    assert db_work.id is not None
+
     cwd = os.path.dirname(os.path.realpath(__file__))
+
     with daemon.DaemonContext(working_directory=cwd) as context:
+        with db.update_work(db_work.id) as work:
+            work.pid = os.getpid()
+
         batch_input = cls.upload()
         transform_result = transform(config=config, batch_input=batch_input)
-        id = transform_result.id
 
-        def run():
-            upload_result = upload(config=config, files=transform_result.files)
-            worker = Worker(
-                id=id,
-                config=config,
-                created=upload_result.created,
-                batch_ids=upload_result.batch_ids,
-                download=cls.download,
-                download_error=cls.download_error,
-            )
+        try:
+            if not config.allow_same_dataset:
+                with db.update_work(db_work.id) as work:
+                    work.dataset_hash = transform_result.dataset_hash
+        except sqlalchemy.exc.IntegrityError:
+            logger.error(f"work {db_work.id} process same dataset")
+            exit(-1)
 
-            # clean up on process termination
-            if config.clean_up:
-                context.signal_map = {
-                    signal.SIGTERM: worker.clean_up,
-                    signal.SIGINT: worker.clean_up,
-                }
+        upload_result = upload(config=config, files=transform_result.files)
 
-            worker.run()
+        worker = Worker(
+            id=db_work.id,
+            db=db,
+            config=config,
+            created=upload_result.created,
+            batch_ids=upload_result.batch_ids,
+            download=cls.download,
+            download_error=cls.download_error,
+        )
 
-        if config.exit_on_duplicate:
-            try:
-                with pidfile.PIDFile(f"/var/run/OpenAI_Batch_{id}.pid"):
-                    run()
-            except pidfile.AlreadyRunningError:
-                logger.error(f"work {id} is already running, exiting.")
-                exit(0)
-        else:
-            run()
+        if config.clean_up:
+            context.signal_map = {
+                signal.SIGTERM: worker.clean_up,
+                signal.SIGINT: worker.clean_up,
+            }
+
+        worker.run()
+
+    return db_work

@@ -15,9 +15,10 @@ from openai.types.chat_model import ChatModel
 from pydantic import BaseModel, Field, model_validator
 
 
-class Config(BaseModel):
+class WorkConfig(BaseModel):
+    name: str | None
     completion_window: timedelta
-    endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
+    endpoint: Literal["/v1/chat/completions", "/v1/embeddings"]
     allow_same_dataset: bool
     clean_up: bool
 
@@ -85,7 +86,7 @@ class BatchRequestInputItem(BaseModel):
     @classmethod
     def from_input(
         cls,
-        config: Config,
+        config: WorkConfig,
         item: BatchInputItem,
     ) -> "BatchRequestInputItem":
         return cls(
