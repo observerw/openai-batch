@@ -15,7 +15,7 @@ app = typer.Typer()
 console = Console()
 
 
-def colored_status(status: schema.WorkStatus) -> Text:
+def _colored_status(status: schema.WorkStatus) -> Text:
     match status:
         case schema.WorkStatus.Pending:
             return Text(status.value, style="yellow")
@@ -37,7 +37,7 @@ def _show(works: Iterable[schema.Work]):
         table.add_row(
             str(work.id),
             work.name,
-            colored_status(work.status),
+            _colored_status(work.status),
         )
 
     console.print(table)

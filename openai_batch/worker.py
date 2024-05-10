@@ -36,8 +36,9 @@ class TransformResult:
     files: list[IO[bytes]]
 
 
-def transform(
-    config: WorkConfig, batch_input: Iterable[BatchInputItem]
+def _transform(
+    config: WorkConfig,
+    batch_input: Iterable[BatchInputItem],
 ) -> TransformResult:
     hasher = hashlib.sha1()
 
@@ -74,7 +75,7 @@ class UploadResult:
     batch_ids: set[str]
 
 
-def upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
+def _upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
     uploaded_files = [
         openai.files.create(
             file=file,
@@ -95,9 +96,37 @@ def upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
     ]
 
     return UploadResult(
-        batch_ids={batch.id for batch in batches},
         created=datetime.now(),
+        batch_ids={batch.id for batch in batches},
     )
+
+
+def _check(batch_ids: set[str]) -> Iterable[BatchStatus]:
+    cursor = openai.batches.list(limit=100)
+    statuses: list[BatchStatus] = []
+
+    for batch in cursor:
+        if batch.id in batch_ids:
+            statuses.append(BatchStatus.from_batch(batch))
+
+        if len(statuses) == len(batch_ids):
+            break
+
+    found_ids = {status.batch_id for status in statuses}
+    not_found_ids = batch_ids - found_ids
+
+    for batch_id in not_found_ids:
+        statuses.append(
+            BatchStatus(
+                batch=None,
+                batch_id=batch_id,
+                status="failed",
+                message="not found",
+                file_id=None,
+            )
+        )
+
+    return statuses
 
 
 class Worker:
@@ -106,40 +135,22 @@ class Worker:
         id: int,
         cls: type["runner.OpenAIBatchRunner"],
         created: datetime,
-        batch_ids: set[str],
+        undone_batch_ids: set[str] = set(),
+        done_batch_ids: set[str] = set(),
     ) -> None:
         self.id = id
         self.cls = cls
         self.created = created
-        self.batch_ids = batch_ids
-        self.batch_ids_remaining = batch_ids.copy()
+        self.undone_batch_ids = undone_batch_ids
+        self.done_batch_ids = done_batch_ids
 
-    def check(self) -> Iterable[BatchStatus]:
-        cursor = openai.batches.list(limit=100)
-        statuses: list[BatchStatus] = []
+    @property
+    def batch_ids(self) -> set[str]:
+        return self.undone_batch_ids | self.done_batch_ids
 
-        for batch in cursor:
-            if batch.id in self.batch_ids_remaining:
-                statuses.append(BatchStatus.from_batch(batch))
-
-            if len(statuses) == len(self.batch_ids_remaining):
-                break
-
-        found_ids = {status.batch_id for status in statuses}
-        not_found_ids = self.batch_ids_remaining - found_ids
-
-        for batch_id in not_found_ids:
-            statuses.append(
-                BatchStatus(
-                    batch=None,
-                    batch_id=batch_id,
-                    status="failed",
-                    message="not found",
-                    file_id=None,
-                )
-            )
-
-        return statuses
+    def done(self, batch_id: str):
+        self.undone_batch_ids.discard(batch_id)
+        self.done_batch_ids.add(batch_id)
 
     def download(self, output_file_ids: Iterable[str]):
         for file_id in output_file_ids:
@@ -159,8 +170,13 @@ class Worker:
             items = (BatchErrorItem.model_validate_json(line) for line in lines)
             self.cls.download_error(items)
 
+    def start(self):
+        with works_db.update_work(self.id) as work:
+            work.pid = os.getpid()
+            work.status = schema.WorkStatus.Running
+
     def run_once(self):
-        statuses = self.check()
+        statuses = _check(self.undone_batch_ids)
 
         output_file_ids: list[str] = []
         error_file_ids: list[str] = []
@@ -173,10 +189,10 @@ class Worker:
                     file_id=str() as file_id,
                 ):
                     output_file_ids.append(file_id)
-                    self.batch_ids_remaining.remove(batch_id)
+                    self.done(batch_id)
                     logger.info(
                         f"batch {batch_id} completed, remaining: "
-                        f"{len(self.batch_ids_remaining)}/{len(self.batch_ids)}"
+                        f"{len(self.undone_batch_ids)}/{len(self.batch_ids)}"
                     )
                 case BatchStatus(
                     batch_id=batch_id,
@@ -184,60 +200,71 @@ class Worker:
                     file_id=str() as file_id,
                 ):
                     error_file_ids.append(file_id)
-                    self.batch_ids_remaining.remove(batch_id)
+                    self.done(batch_id)
                     logger.error(f"batch {batch_id} failed: {status.message}")
 
         self.download(output_file_ids)
         self.download_error(error_file_ids)
 
-    def clean_up(self):
+    def end(self, success: bool):
         logger.info(f"cleaning up work {self.id}")
-        statuses = self.check()
 
-        for status in statuses:
-            if status.batch:
-                openai.files.delete(status.batch.input_file_id)
+        if self.cls.work_config.clean_up:
+            file_ids = [
+                id
+                for status in _check(self.batch_ids)
+                if (id := status.file_id) is not None
+            ]
 
-        if self.batch_ids_remaining:
-            logger.error(f"unexpected batches remaining: {self.batch_ids_remaining}")
+            for file_id in file_ids:
+                openai.files.delete(file_id)
+
+        if self.undone_batch_ids:
+            logger.error(f"unexpected batches remaining: {self.batch_ids}")
+
+        with works_db.update_work(self.id) as work:
+            if success:
+                work.status = schema.WorkStatus.Completed
+            else:
+                work.status = schema.WorkStatus.Failed
+            work.pid = None
+
+    def pause(self):
+        pass
 
     def run(self):
         logger.info(f"work {self.id} started")
-        works_db.update_work_status(self.id, schema.WorkStatus.Running)
 
-        while self.created + self.cls.work_config.completion_window > datetime.now():
-            sleep(60 * 60 * 2)
-            try:
+        ddl = self.created + self.cls.work_config.completion_window
+
+        self.start()
+
+        try:
+            while datetime.now() < ddl:
+                sleep(60 * 60 * 2)  # TODO sleep interval
                 self.run_once()
-            except Exception as e:
-                logger.error(f"work {self.id} failed: {e}")
-                works_db.update_work_status(self.id, schema.WorkStatus.Failed)
-                return
-            finally:
-                if self.cls.work_config.clean_up:
-                    self.clean_up()
-
-        logger.info(f"work {self.id} finished")
-        works_db.update_work_status(self.id, schema.WorkStatus.Completed)
+        except Exception as e:
+            logger.error(f"work {self.id} failed: {e}")
+            self.end(success=False)
+        else:
+            logger.info(f"work {self.id} completed")
+            self.end(success=True)
 
 
 def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     db_work = works_db.create_work(
-        schema.Work(
-            name=cls.work_config.name,
-            created_at=datetime.now(),
-        ),
+        schema.Work(**cls.work_config.model_dump()),
     )
     assert db_work.id is not None
 
     cwd = os.path.dirname(os.path.realpath(__file__))
 
     with daemon.DaemonContext(working_directory=cwd) as context:
-        with works_db.update_work(db_work.id) as work:
-            work.pid = os.getpid()
-
         batch_input = cls.upload()
-        transform_result = transform(config=cls.work_config, batch_input=batch_input)
+        transform_result = _transform(
+            config=cls.work_config,
+            batch_input=batch_input,
+        )
 
         try:
             if not cls.work_config.allow_same_dataset:
@@ -247,21 +274,27 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
             logger.error(f"work {db_work.id} process same dataset")
             exit(-1)
 
-        upload_result = upload(config=cls.work_config, files=transform_result.files)
+        upload_result = _upload(
+            config=cls.work_config,
+            files=transform_result.files,
+        )
 
         worker = Worker(
             id=db_work.id,
             cls=cls,
             created=upload_result.created,
-            batch_ids=upload_result.batch_ids,
+            undone_batch_ids=upload_result.batch_ids,
         )
 
-        if cls.work_config.clean_up:
-            context.signal_map = {
-                signal.SIGTERM: worker.clean_up,
-                signal.SIGINT: worker.clean_up,
-            }
+        context.signal_map = {
+            signal.SIGTERM: worker.pause(),  # TODO pause on terminate
+        }
 
         worker.run()
 
     return db_work
+
+
+def resume_worker(work: schema.Work) -> schema.Work:
+    # TODO resume worker from db
+    raise NotImplementedError()

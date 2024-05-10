@@ -4,7 +4,7 @@ import pytest
 
 from openai_batch.const import MAX_FILE_SIZE
 from openai_batch.model import BatchInputItem, WorkConfig
-from openai_batch.worker import transform
+from openai_batch.worker import _transform
 
 config = WorkConfig(
     name="test",
@@ -33,7 +33,7 @@ class TestWorker:
                 for id in range(batch_input_num)
             ]
         )
-        result = transform(config, batch_input)
+        result = _transform(config, batch_input)
         assert sum([len(f.readlines()) for f in result.files]) == batch_input_num
         for f in result.files:
             assert 0 < f.tell() <= MAX_FILE_SIZE
