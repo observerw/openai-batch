@@ -7,6 +7,7 @@ import sqlalchemy.exc
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
+from ..config import global_config
 from . import schema
 
 
@@ -19,6 +20,14 @@ class OpenAIBatchDatabase:
         with Session(self.engine) as session:
             session.add(work)
             session.commit()
+
+        return work
+
+    def get_work(self, work_id: int) -> schema.Work | None:
+        with Session(self.engine) as session:
+            work = session.exec(
+                select(schema.Work).where(schema.Work.id == work_id)
+            ).one_or_none()
 
         return work
 
@@ -64,3 +73,10 @@ class OpenAIBatchDatabase:
     def update_work_status(self, work_id: int, status: schema.WorkStatus):
         with self.update_work(work_id) as work:
             work.status = status
+
+
+try:
+    works_db = OpenAIBatchDatabase(global_config.db_path)
+except Exception as e:
+    print(f"Failed to initialize database: {e}")
+    exit(-1)

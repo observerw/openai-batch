@@ -1,2 +1,2 @@
-from .database import OpenAIBatchDatabase
 from . import schema
+from .database import works_db

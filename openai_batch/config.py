@@ -50,3 +50,10 @@ class OpenAIBatchConfig(BaseModel):
             yield config
         finally:
             config.save()
+
+
+try:
+    global_config = OpenAIBatchConfig.load()
+except Exception as e:
+    print(f"Failed to load config: {e}")
+    exit(-1)

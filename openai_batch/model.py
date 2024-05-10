@@ -16,11 +16,11 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class WorkConfig(BaseModel):
-    name: str | None
-    completion_window: timedelta
-    endpoint: Literal["/v1/chat/completions", "/v1/embeddings"]
-    allow_same_dataset: bool
-    clean_up: bool
+    name: str | None = None
+    completion_window: timedelta = timedelta(hours=24)
+    endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
+    allow_same_dataset: bool = False
+    clean_up: bool = True
 
 
 class BatchInputItem(BaseModel):

@@ -1,10 +1,6 @@
-import os
 from abc import abstractmethod
-from datetime import timedelta
-from typing import Iterable, Literal
+from typing import Iterable
 
-from .config import OpenAIBatchConfig
-from .db.database import OpenAIBatchDatabase
 from .model import (
     BatchErrorItem,
     BatchInputItem,
@@ -15,30 +11,7 @@ from .worker import run_worker
 
 
 class OpenAIBatchRunner:
-    def __init__(
-        self,
-        openai_key: str | None = None,
-        name: str | None = None,
-        completion_window: timedelta = timedelta(hours=24),
-        endpoint: Literal[
-            "/v1/chat/completions",
-            "/v1/embeddings",
-        ] = "/v1/chat/completions",
-        allow_same_dataset: bool = False,
-        clean_up: bool = True,
-    ) -> None:
-        if openai_key:
-            os.environ["OPENAI_KEY"] = openai_key
-
-        self.config = OpenAIBatchConfig.load()
-        self.work_config = WorkConfig(
-            name=name,
-            completion_window=completion_window,
-            endpoint=endpoint,
-            allow_same_dataset=allow_same_dataset,
-            clean_up=clean_up,
-        )
-        self.db = OpenAIBatchDatabase(self.config.db_path)
+    work_config: WorkConfig = WorkConfig()
 
     @staticmethod
     @abstractmethod
@@ -62,6 +35,7 @@ class OpenAIBatchRunner:
 
         return
 
-    def run(self):
-        work = run_worker(self.__class__, self.work_config, self.db)
+    @classmethod
+    def run(cls):
+        work = run_worker(cls)
         print(f"work {work.id} started")

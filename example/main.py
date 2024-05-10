@@ -1,3 +1,4 @@
+from datetime import timedelta
 import json
 import logging
 from typing import Iterable
@@ -8,6 +9,7 @@ from openai_batch import (
     BatchOutputItem,
     OpenAIBatchRunner,
 )
+from openai_batch.model import WorkConfig
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -19,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class Runner(OpenAIBatchRunner):
+    work_config = WorkConfig(
+        name="example",
+        completion_window=timedelta(hours=24),
+        endpoint="/v1/chat/completions",
+        allow_same_dataset=False,
+        clean_up=True,
+    )
+
     @staticmethod
     def upload() -> Iterable[BatchInputItem]:
         with open("data.jsonl", "r", encoding="utf-8") as f:
@@ -56,4 +66,4 @@ class Runner(OpenAIBatchRunner):
 
 
 if __name__ == "__main__":
-    Runner().run()
+    Runner.run()
