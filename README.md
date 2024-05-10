@@ -14,6 +14,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Runner(OpenAIBatchRunner):
+    work_config = WorkConfig(
+        name="example",
+        completion_window=timedelta(hours=24),
+        endpoint="/v1/chat/completions",
+        allow_same_dataset=False,
+        clean_up=True,
+    )
+
     @staticmethod
     def upload() -> Iterable[BatchInputItem]:
         with open("data.jsonl", "r", encoding="utf-8") as f:
@@ -48,17 +56,22 @@ class Runner(OpenAIBatchRunner):
         with open("errors.jsonl", "a", encoding="utf-8") as f:
             for item in output:
                 f.write(f"{item.model_dump_json()}\n")
-                # or: logger.error(f"Batch task {item.id} failed: {item.error}")
 
 
 if __name__ == "__main__":
-    Runner().run()
+    Runner.run()
 ```
 
-then:
+In above example:
+
+- You need to inherit `OpenAIBatchRunner` class and define your own Runner class, in which you need to define `work_config`(optional), `upload`, `download`, and `download_error`(optional) methods.
+- It's recommended to configure logging in your script, since the runner will log information during the process.
+- When all the configurations are done, you can run the script through `Runner.run()`.
+
+To run the script, you can simply run:
 
 ```sh
 python runner.py
 ```
 
-A daemon will be started. Within 24 hours, the daemon will automatically download the results and save them.
+Then a daemon will be started. Within 24 hours, the daemon will automatically download the results and save them.
