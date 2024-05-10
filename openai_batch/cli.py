@@ -1,65 +1,82 @@
 import os
 from datetime import datetime
-from typing import Iterable
+from typing import Annotated, Iterable, Optional
 
-import click
-import colors
-import prettytable as pt
+import typer
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
+from .config import global_config
 from .db import schema, works_db
+from .utils import recursive_getattr, recursive_setattr
+
+app = typer.Typer()
+console = Console()
 
 
-def ansi_status(status: schema.WorkStatus) -> str:
+def colored_status(status: schema.WorkStatus) -> Text:
     match status:
         case schema.WorkStatus.Pending:
-            return colors.yellow(status.value)
+            return Text(status.value, style="yellow")
         case schema.WorkStatus.Running:
-            return colors.blue(status.value)
+            return Text(status.value, style="blue")
         case schema.WorkStatus.Completed:
-            return colors.green(status.value)
+            return Text(status.value, style="green")
         case schema.WorkStatus.Failed:
-            return colors.red(status.value)
+            return Text(status.value, style="red")
 
 
 def _show(works: Iterable[schema.Work]):
-    table = pt.PrettyTable()
-    table.field_names = ["ID", "name", "Status"]
+    table = Table()
+    table.add_column("ID", style="cyan")
+    table.add_column("name", style="magenta")
+    table.add_column("Status")
+
     for work in works:
         table.add_row(
-            [
-                work.id,
-                work.name,
-                ansi_status(work.status),
-            ]
+            str(work.id),
+            work.name,
+            colored_status(work.status),
         )
 
-    click.echo(table)
+    console.print(table)
 
 
-@click.group()
-def cli():
-    pass
-
-
-@cli.command()
-@click.option("--id", type=int, help="Work ID")
-def get(work_id: int):
-    work = works_db.get_work(work_id)
+@app.command()
+def get(id: Annotated[int, typer.Option(help="Work ID")]):
+    work = works_db.get_work(id)
     if work is None:
-        click.echo(f"Work with id: {work_id} not found")
+        console.print(f"Work with id: {id} not found")
         return
 
     _show([work])
 
 
-@cli.command()
+@app.command()
 def list(
-    status: Iterable[schema.WorkStatus] | None = None,
-    created_at: datetime | None = None,
-    names: Iterable[str] | None = None,
+    created_at: Annotated[
+        Optional[datetime],
+        typer.Option("--created-at", "-c", help="Earliest work create time"),
+    ] = None,
+    statuses: Annotated[
+        Optional[list[schema.WorkStatus]],
+        typer.Option("--status", "-s", help="Work status"),
+    ] = None,
+    names: Annotated[
+        Optional[list[str]],
+        typer.Option("--name", "-n", help="Work name"),
+    ] = None,
+    ids: Annotated[
+        Optional[list[int]],
+        typer.Option("--id", help="Work ID"),
+    ] = None,
 ):
     def accept(work: schema.Work) -> bool:
-        if status and work.status not in status:
+        if ids and work.id in ids:  # always True when id is specified
+            return True
+
+        if statuses and work.status not in statuses:
             return False
 
         if created_at and work.created_at < created_at:
@@ -75,15 +92,44 @@ def list(
     _show(works)
 
 
-@cli.command()
-@click.option("--id", type=int, help="Work ID")
-def delete(work_id: int):
-    work = works_db.delete_work(work_id)
+@app.command()
+def delete(id: Annotated[int, typer.Argument(help="Work ID")]):
+    work = works_db.delete_work(id)
     if work is None:
-        click.echo(f"Work with id: {work_id} not found")
+        console.print(f"Work with id: {id} not found")
         return
 
     if pid := work.pid:
         os.kill(pid, 9)
 
-    click.echo(f"Deleted work with id: {work_id}")
+    console.print(f"Deleted work with id: {id}")
+
+
+@app.command()
+def config(
+    item: Annotated[
+        str,
+        typer.Argument(help="Config item"),
+    ],
+    new_value: Annotated[
+        Optional[str],
+        typer.Argument(help="New value"),
+    ] = None,
+):
+    if new_value:
+        with global_config.update() as config:
+            try:
+                recursive_getattr(config, item)
+            except AttributeError:
+                console.print(f"Config item {item} not found")
+
+            try:
+                recursive_setattr(config, item, new_value)
+            except AttributeError:
+                console.print(f"Cannot set config item {item}")
+    else:
+        try:
+            value = recursive_getattr(global_config, item)
+            console.print(f"{item}: {value}")
+        except AttributeError:
+            console.print(f"Config item {item} not found")

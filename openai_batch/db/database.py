@@ -1,4 +1,5 @@
 import contextlib
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -13,6 +14,9 @@ from . import schema
 
 class OpenAIBatchDatabase:
     def __init__(self, database: Path) -> None:
+        if not database.exists():
+            os.makedirs(database.parent, exist_ok=True)
+
         self.engine = create_engine(f"sqlite:///{database}")
         SQLModel.metadata.create_all(self.engine)
 

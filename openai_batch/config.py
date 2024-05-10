@@ -5,7 +5,7 @@ from pathlib import Path
 
 import tomli_w
 import tomllib
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 match platform.system():
     case "Windows":
@@ -24,6 +24,11 @@ _config_path = _config_dir / "config.toml"
 
 
 class OpenAIBatchConfig(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        validate_assignment=True,
+    )
+
     save_path: Path = Path.home() / ".openai_batch"
 
     @property
@@ -31,29 +36,34 @@ class OpenAIBatchConfig(BaseModel):
         return self.save_path / "works.sqlite"
 
     @classmethod
-    def load(cls) -> "OpenAIBatchConfig":
+    def _load(cls) -> "OpenAIBatchConfig":
         if not _config_path.exists():
-            _config_path.touch()
-            return cls()
+            os.makedirs(_config_dir, exist_ok=True)
+            config = cls()
+            config._save()
+            return config
 
         with _config_path.open("rb") as f:
             return cls.model_validate(tomllib.load(f))
 
-    def save(self) -> None:
+    def _save(self) -> None:
         with _config_path.open("wb") as f:
             tomli_w.dump(self.model_dump(), f)
 
     @contextlib.contextmanager
+    @staticmethod
     def update():
-        config = OpenAIBatchConfig.load()
+        config = OpenAIBatchConfig._load()
         try:
             yield config
         finally:
-            config.save()
+            global global_config
+            global_config = config  # update global_config variable to keep it in sync
+            config._save()
 
 
 try:
-    global_config = OpenAIBatchConfig.load()
+    global_config = OpenAIBatchConfig._load()
 except Exception as e:
     print(f"Failed to load config: {e}")
     exit(-1)
