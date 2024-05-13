@@ -10,6 +10,7 @@ from rich.text import Text
 from .config import global_config
 from .db import schema, works_db
 from .utils import recursive_getattr, recursive_setattr
+from .worker import resume_worker
 
 app = typer.Typer()
 console = Console()
@@ -44,7 +45,7 @@ def _show(works: Iterable[schema.Work]):
 
 
 @app.command()
-def get(id: Annotated[int, typer.Option(help="Work ID")]):
+def get(id: Annotated[int, typer.Argument(help="Work ID")]):
     work = works_db.get_work(id)
     if work is None:
         console.print(f"Work with id: {id} not found")
@@ -69,7 +70,7 @@ def list(
     ] = None,
     ids: Annotated[
         Optional[list[int]],
-        typer.Option("--id", help="Work ID"),
+        typer.Option(help="Work ID"),
     ] = None,
 ):
     def accept(work: schema.Work) -> bool:
@@ -103,6 +104,23 @@ def delete(id: Annotated[int, typer.Argument(help="Work ID")]):
         os.kill(pid, 9)
 
     console.print(f"Deleted work with id: {id}")
+
+
+@app.command()
+def resume(id: Annotated[int, typer.Argument(help="Work ID")]):
+    work = works_db.get_work(id)
+    if work is None:
+        console.print(f"Work with id: {id} not found")
+        return
+
+    if work.status == schema.WorkStatus.Pending:
+        resume_worker(work)
+    else:
+        console.print(
+            f"Work with id: {id} is {work.status.value} and cannot be resumed"
+        )
+
+    console.print(f"Resumed work with id: {id}")
 
 
 @app.command()

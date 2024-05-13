@@ -7,6 +7,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from time import sleep
 from typing import IO, Iterable
 
@@ -232,8 +233,8 @@ class Worker:
 
     def save(self):
         with works_db.update_work(self.id) as work:
-            work.undone_batch_ids = self.undone_batch_ids
-            work.done_batch_ids = self.done_batch_ids
+            work.undone_batch_ids = list(self.undone_batch_ids)
+            work.done_batch_ids = list(self.done_batch_ids)
 
     def pause(self):
         works_db.update_work_status(self.id, schema.WorkStatus.Pending)
@@ -261,7 +262,13 @@ class Worker:
 def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     cwd = os.path.dirname(os.path.realpath(__file__))
 
+    source_file_path = inspect.getsourcefile(cls)
+    assert source_file_path is not None
+    script = Path(source_file_path).read_text()
+    interpreter_path = sys.executable
+
     work_config = cls.work_config
+
     db_work = works_db.create_work(
         schema.Work(
             name=work_config.name,
@@ -269,10 +276,10 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
             endpoint=work_config.endpoint,
             allow_same_dataset=work_config.allow_same_dataset,
             clean_up=work_config.clean_up,
-            interpreter_path=sys.executable,
+            interpreter_path=interpreter_path,
             work_dir=cwd,
-            class_name=str(cls.__name__),
-            script=inspect.getsource(cls),
+            class_name=cls.__name__,
+            script=script,
         ),
     )
     assert db_work.id is not None
@@ -320,17 +327,22 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
 def resume_worker(work: schema.Work) -> schema.Work:
     assert work.id is not None
     # Load user script
-    exec(work.script, globals())
-    cls: type["runner.OpenAIBatchRunner"] | None = globals().get(work.class_name)
-    assert cls is not None, f"Could not find `{work.class_name}` from source code in DB."
+    scope = {}
+    exec(work.script, scope)
+    cls: type["runner.OpenAIBatchRunner"] | None = scope.get(work.class_name)
+    assert (
+        cls is not None
+    ), f"Could not find `{work.class_name}` from source code in DB."
+
     # Create a Worker daemon
+    # TODO specify interpreter path
     with daemon.DaemonContext(working_directory=work.work_dir) as context:
         worker = Worker(
             id=work.id,
             cls=cls,
             created=work.created_at,
-            undone_batch_ids=work.undone_batch_ids,
-            done_batch_ids=work.done_batch_ids,
+            undone_batch_ids=set(work.undone_batch_ids),
+            done_batch_ids=set(work.done_batch_ids),
         )
 
         context.signal_map = {
