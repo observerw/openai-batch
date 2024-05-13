@@ -79,7 +79,7 @@ def _upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
     uploaded_files = [
         openai.files.create(
             file=file,
-            purpose="batch",  # type: ignore
+            purpose="batch",
         )
         for file in files
     ]
