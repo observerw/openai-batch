@@ -33,8 +33,9 @@ class Work(SQLModel, table=True):
     clean_up: bool = Field()
 
     # resume info
-    interpreter_path: str | None = Field(default=None)
-    work_dir: str | None = Field(default=None)
-    script: str | None = Field(default=None)
-    undone_batch_ids: list[int] = Field(default=[], sa_column=Column(JSON))
-    done_batch_ids: list[int] = Field(default=[], sa_column=Column(JSON))
+    interpreter_path: str
+    work_dir: str
+    class_name: str
+    script: str
+    undone_batch_ids: set[str] = Field(default=set(), sa_column=Column(JSON))
+    done_batch_ids: set[str] = Field(default=set(), sa_column=Column(JSON))
