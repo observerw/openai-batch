@@ -48,7 +48,7 @@ class BatchInputItem(BaseModel):
     @model_validator(mode="after")
     def _validate(self):
         if self.top_logprobs and not self.logprobs:
-            raise ValueError("top_logprobs requires logprobs to be enabled")
+            raise ValueError("`top_logprobs` requires `logprobs` to be enabled")
 
         return self
 
@@ -143,31 +143,51 @@ class BatchRequestOutputItem(BaseModel):
 
 
 class BatchStatus(BaseModel):
-    batch: Batch | None
-    batch_id: str
-    status: Literal["success", "in_progress", "failed"]
-    message: str | None = None
-    # when status is completed, the output_file_id;
-    # when status is failed, the error_file_id
-    file_id: str | None = None
+    """
+    Status object that extracts information from a `Batch`.
+    """
+
+    batch: Batch | None = None
+    message: str
+
+    @property
+    def file_id(self) -> str | None:
+        """
+        When status is completed, the output_file_id; or when status is failed, the error_file_id
+        """
+        match (self.batch, self.status):
+            case Batch() as batch, "success":
+                return batch.output_file_id
+            case Batch() as batch, "failed":
+                return batch.error_file_id
+
+        return None
+
+    @property
+    def status(self) -> Literal["success", "in_progress", "failed"] | None:
+        match self.batch:
+            case Batch(status="completed"):
+                return "success"
+            case Batch(status="failed" | "cancelled" | "expired"):
+                return "failed"
+            case Batch():
+                return "in_progress"
+            case str():
+                return None
+
+    @property
+    def batch_id(self) -> str | None:
+        return self.batch and self.batch.id
 
     @classmethod
     def from_batch(cls, batch: Batch) -> "BatchStatus":
-        match batch.status:
-            case "completed":
-                status = "success"
-                file_id = batch.output_file_id
-            case "failed" | "cancelled" | "expired":
-                status = "failed"
-                file_id = batch.error_file_id
-            case _:
-                status = "in_progress"
-                file_id = None
+        status = cls(batch=batch, message=batch.status)
 
-        return cls(
-            batch=batch,
-            batch_id=batch.id,
-            status=status,
-            message=batch.status,
-            file_id=file_id,
-        )
+        match status:
+            case BatchStatus(status="success" | "failed" as status, file_id=None):
+                status.message = (
+                    f"Batch ended with status {status}"
+                    "but corresponding file is missing"
+                )
+
+        return status

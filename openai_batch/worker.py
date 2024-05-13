@@ -116,15 +116,7 @@ def _check(batch_ids: set[str]) -> Iterable[BatchStatus]:
     not_found_ids = batch_ids - found_ids
 
     for batch_id in not_found_ids:
-        statuses.append(
-            BatchStatus(
-                batch=None,
-                batch_id=batch_id,
-                status="failed",
-                message="not found",
-                file_id=None,
-            )
-        )
+        statuses.append(BatchStatus(message=f"batch with id {batch_id} not found"))
 
     return statuses
 
@@ -184,7 +176,7 @@ class Worker:
         for status in statuses:
             match status:
                 case BatchStatus(
-                    batch_id=batch_id,
+                    batch_id=str() as batch_id,
                     status="success",
                     file_id=str() as file_id,
                 ):
@@ -195,13 +187,15 @@ class Worker:
                         f"{len(self.undone_batch_ids)}/{len(self.batch_ids)}"
                     )
                 case BatchStatus(
-                    batch_id=batch_id,
+                    batch_id=str() as batch_id,
                     status="failed",
                     file_id=str() as file_id,
                 ):
                     error_file_ids.append(file_id)
                     self.done(batch_id)
                     logger.error(f"batch {batch_id} failed: {status.message}")
+                case BatchStatus(message=message):
+                    logger.error(f"unexpected batch status: {message}")
 
         self.download(output_file_ids)
         self.download_error(error_file_ids)
@@ -211,16 +205,19 @@ class Worker:
 
         if self.cls.work_config.clean_up:
             file_ids = [
-                id
+                file_id
                 for status in _check(self.batch_ids)
-                if (id := status.file_id) is not None
+                if (file_id := status.file_id) is not None
             ]
 
             for file_id in file_ids:
                 openai.files.delete(file_id)
 
         if self.undone_batch_ids:
-            logger.error(f"unexpected batches remaining: {self.batch_ids}")
+            logger.error(
+                f"unexpected batches remaining: {self.batch_ids}, "
+                "please manually check their status"
+            )
 
         with works_db.update_work(self.id) as work:
             if success:
@@ -228,6 +225,8 @@ class Worker:
             else:
                 work.status = schema.WorkStatus.Failed
             work.pid = None
+
+        logger.info(f"work {self.id} cleaned up")
 
     def pause(self):
         pass
@@ -252,8 +251,15 @@ class Worker:
 
 
 def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
+    work_config = cls.work_config
     db_work = works_db.create_work(
-        schema.Work(**cls.work_config.model_dump()),
+        schema.Work(
+            name=work_config.name,
+            completion_window=work_config.completion_window.seconds,
+            endpoint=work_config.endpoint,
+            allow_same_dataset=work_config.allow_same_dataset,
+            clean_up=work_config.clean_up,
+        ),
     )
     assert db_work.id is not None
 
@@ -271,13 +277,17 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
                 with works_db.update_work(db_work.id) as work:
                     work.dataset_hash = transform_result.dataset_hash
         except sqlalchemy.exc.IntegrityError:
-            logger.error(f"work {db_work.id} process same dataset")
+            logger.error(f"work {db_work.id} process on same dataset")
             exit(-1)
 
-        upload_result = _upload(
-            config=cls.work_config,
-            files=transform_result.files,
-        )
+        try:
+            upload_result = _upload(
+                config=cls.work_config,
+                files=transform_result.files,
+            )
+        except openai.OpenAIError as e:
+            logger.error(f"work {db_work.id} failed to upload: {e}")
+            exit(-1)
 
         worker = Worker(
             id=db_work.id,
