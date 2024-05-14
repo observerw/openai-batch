@@ -26,6 +26,8 @@ def _colored_status(status: schema.WorkStatus) -> Text:
             return Text(status.value, style="green")
         case schema.WorkStatus.Failed:
             return Text(status.value, style="red")
+        case _:
+            return Text(status.value)
 
 
 def _show(works: Iterable[schema.Work]):

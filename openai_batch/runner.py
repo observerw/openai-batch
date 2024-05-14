@@ -94,10 +94,14 @@ class OpenAIBatchRunner:
 
             # run from subprocess, resume the work with OPENAI_BATCH_RESUME_ID
             case str() as id if id.isdigit():
-                id = int(id)
-                resume_worker(id)
+                work = works_db.get_work(int(id))
+                if not work:
+                    console.print(f"Work with id: {id} not found", style="bold red")
+                    sys.exit(-1)
+
+                resume_worker(work)
             case _:
-                console.print("Invalid OPENAI_BATCH_RESUME_ID.")
+                console.print("Invalid OPENAI_BATCH_RESUME_ID.", style="bold red")
                 sys.exit(-1)
 
-        console.print(f"Work {id} started.")
+        console.print(f"Work {id} successfully started.", style="green")

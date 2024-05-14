@@ -285,10 +285,7 @@ def create_work(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     return db_work
 
 
-def resume_worker(id: int):
-    work = works_db.get_work(id)
-    if not work:
-        return
+def resume_worker(work: schema.Work):
     assert work.id is not None
     work_id = work.id
 
