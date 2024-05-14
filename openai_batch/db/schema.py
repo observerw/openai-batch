@@ -5,6 +5,7 @@ from sqlmodel import JSON, Column, Field, SQLModel
 
 
 class WorkStatus(Enum):
+    Created = "created"  # work is created but not started
     Pending = "pending"
     Running = "running"
     Completed = "completed"
@@ -23,7 +24,7 @@ class Work(SQLModel, table=True):
     # ------------------------------- Running info ------------------------------- #
     # required only when allow_same_dataset is False
     dataset_hash: str | None = Field(default=None, unique=True)
-    status: WorkStatus = Field(default=WorkStatus.Pending)
+    status: WorkStatus = Field(default=WorkStatus.Created)
     pid: int | None = Field(default=None)
 
     # -------------------------- work config (required) -------------------------- #

@@ -2,7 +2,6 @@ import hashlib
 import inspect
 import logging
 import os
-import signal
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ from pathlib import Path
 from time import sleep
 from typing import IO, Iterable
 
-import daemon
 import openai
 import sqlalchemy
 import sqlalchemy.exc
@@ -259,7 +257,7 @@ class Worker:
             self.end(success=True)
 
 
-def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
+def create_work(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     cwd = os.path.dirname(os.path.realpath(__file__))
 
     source_file_path = inspect.getsourcefile(cls)
@@ -284,49 +282,16 @@ def run_worker(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     )
     assert db_work.id is not None
 
-    with daemon.DaemonContext(working_directory=cwd) as context:
-        batch_input = cls.upload()
-        transform_result = _transform(
-            config=cls.work_config,
-            batch_input=batch_input,
-        )
-
-        try:
-            if not cls.work_config.allow_same_dataset:
-                with works_db.update_work(db_work.id) as work:
-                    work.dataset_hash = transform_result.dataset_hash
-        except sqlalchemy.exc.IntegrityError:
-            logger.error(f"work {db_work.id} process on same dataset")
-            exit(-1)
-
-        try:
-            upload_result = _upload(
-                config=cls.work_config,
-                files=transform_result.files,
-            )
-        except openai.OpenAIError as e:
-            logger.error(f"work {db_work.id} failed to upload: {e}")
-            exit(-1)
-
-        worker = Worker(
-            id=db_work.id,
-            cls=cls,
-            created=upload_result.created,
-            undone_batch_ids=upload_result.batch_ids,
-        )
-
-        context.signal_map = {
-            signal.SIGTERM: worker.pause(),
-        }
-
-        worker.run()
-
     return db_work
 
 
-def resume_worker(work: schema.Work) -> schema.Work:
+def resume_worker(id: int):
+    work = works_db.get_work(id)
+    if not work:
+        return
     assert work.id is not None
-    # Load user script
+    work_id = work.id
+
     scope = {}
     exec(work.script, scope)
     cls: type["runner.OpenAIBatchRunner"] | None = scope.get(work.class_name)
@@ -334,21 +299,50 @@ def resume_worker(work: schema.Work) -> schema.Work:
         cls is not None
     ), f"Could not find `{work.class_name}` from source code in DB."
 
-    # Create a Worker daemon
-    # TODO specify interpreter path
-    with daemon.DaemonContext(working_directory=work.work_dir) as context:
-        worker = Worker(
-            id=work.id,
-            cls=cls,
-            created=work.created_at,
-            undone_batch_ids=set(work.undone_batch_ids),
-            done_batch_ids=set(work.done_batch_ids),
-        )
+    batch_input = cls.upload()
+    transform_result = _transform(
+        config=cls.work_config,
+        batch_input=batch_input,
+    )
 
-        context.signal_map = {
-            signal.SIGTERM: worker.pause(),
-        }
+    match work.status:
+        case schema.WorkStatus.Created:
+            try:
+                if not cls.work_config.allow_same_dataset:
+                    with works_db.update_work(work_id) as work:
+                        work.dataset_hash = transform_result.dataset_hash
+            except sqlalchemy.exc.IntegrityError:
+                logger.error(f"work {work_id} process on same dataset")
+                exit(-1)
 
-        worker.run()
+            try:
+                upload_result = _upload(
+                    config=cls.work_config,
+                    files=transform_result.files,
+                )
+            except openai.OpenAIError as e:
+                logger.error(f"work {work_id} failed to upload: {e}")
+                exit(-1)
 
-    return work
+            worker = Worker(
+                id=work_id,
+                cls=cls,
+                created=upload_result.created,
+                undone_batch_ids=upload_result.batch_ids,
+            )
+
+        case schema.WorkStatus.Pending:
+            worker = Worker(
+                id=work_id,
+                cls=cls,
+                created=work.created_at,
+                undone_batch_ids=set(work.undone_batch_ids),
+                done_batch_ids=set(work.done_batch_ids),
+            )
+        case _:
+            logger.error(f"work {work_id} is already {work.status}")
+            exit(-1)
+
+    # TODO signal map
+
+    worker.run()
