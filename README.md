@@ -2,6 +2,38 @@
 
 [Batch API Reference](https://platform.openai.com/docs/api-reference/batch)
 
+# Installation
+
+```sh
+pip install openai-batch
+```
+
+or using poetry:
+
+```sh
+poetry add openai-batch
+```
+
+# Write your own `Runner` script
+
+## Config
+
+|         Name         |         Type         |                                       Description                                       |
+| :------------------: | :------------------: | :-------------------------------------------------------------------------------------: |
+|        `name`        |        `str`         |                                    Name of the work.                                    |
+| `completion_window`  | `datetime.timedelta` | Time window for the work to be completed. Only support `timedelta(hours=24)` currently. |
+|      `endpoint`      |        `str`         |    API endpoint. Only support `/v1/chat/completions` and `/v1/embeddings` currently.    |
+| `allow_same_dataset` |        `bool`        |            Whether to allow the same dataset to be processed multiple times.            |
+|      `clean_up`      |        `bool`        |                     Whether to clean up the work after completion.                      |
+
+## Methods
+
+- `upload()`: Transform your own dataset into OpenAI chat completions API format. Considering the dataset may be too large to be loaded into memory, it's recommended to use a generator to yield the data.
+- `download(output: Iterable[BatchOutputItem])`: Download the API response.
+- `download_error(output: Iterable[BatchErrorItem])`: (Optional) Download the errors.
+
+## Example
+
 example usage (`runner.py`):
 
 ```python
@@ -28,7 +60,7 @@ class Runner(OpenAIBatchRunner):
             # each line is a JSON object like {"id": "1", "content": "Hello!"}
             for line in f:
                 data = json.loads(line)
-                yield BatchInputItem(
+                yield BatchInputItem(   # yield an item
                     id=data["id"],
                     messages=[
                         {
@@ -64,7 +96,7 @@ if __name__ == "__main__":
 
 In above example:
 
-- You need to inherit `OpenAIBatchRunner` class and define your own Runner class, in which you need to define `work_config`(optional), `upload`, `download`, and `download_error`(optional) methods.
+- You need to inherit `OpenAIBatchRunner` class and define your own Runner class.
 - It's recommended to configure logging in your script, since the runner will log information during the process.
 - When all the configurations are done, you can run the script through `Runner.run()`.
 
@@ -75,3 +107,5 @@ python runner.py
 ```
 
 Then a daemon will be started. Within 24 hours, the daemon will automatically download the results and save them.
+
+ 
