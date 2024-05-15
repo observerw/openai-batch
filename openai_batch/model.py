@@ -156,10 +156,10 @@ class BatchStatus(BaseModel):
         When status is completed, the output_file_id; or when status is failed, the error_file_id
         """
         match (self.batch, self.status):
-            case Batch() as batch, "success":
-                return batch.output_file_id
-            case Batch() as batch, "failed":
-                return batch.error_file_id
+            case Batch(output_file_id=file_id), "success":
+                return file_id
+            case Batch(error_file_id=file_id), "failed":
+                return file_id
 
         return None
 
@@ -172,7 +172,7 @@ class BatchStatus(BaseModel):
                 return "failed"
             case Batch():
                 return "in_progress"
-            case str():
+            case _:
                 return None
 
     @property

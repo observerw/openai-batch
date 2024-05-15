@@ -2,7 +2,6 @@
 # $script: python script content
 # $workDir: path to the work directory
 # $taskName: name of the task
-# $description: description of the task
 # $interval: time interval for the task to run (in seconds)
 # $completionWindow: time window for the task to complete (in seconds)
 
@@ -13,7 +12,6 @@ $trigger.EndBoundary = (Get-Date).AddSeconds($completionWindow).ToString("s")
 
 Register-ScheduledTask \
     -TaskName $taskName \
-    -Description $description \
     -Action $action \
     -Settings $settings \
     -Trigger $trigger | Out-Null
