@@ -1,10 +1,13 @@
 import inspect
+import logging
 import os
 import sys
 from pathlib import Path
 
 from .. import runner
 from ..db import schema, works_db
+
+logger = logging.getLogger(__name__)
 
 
 def create_work(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
@@ -33,3 +36,7 @@ def create_work(cls: type["runner.OpenAIBatchRunner"]) -> schema.Work:
     assert db_work.id is not None
 
     return db_work
+
+
+def create_stage():
+    raise NotImplementedError()

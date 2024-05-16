@@ -124,3 +124,7 @@ def register_task_unix(work: schema.Work):
     assert work.id is not None
 
     raise NotImplementedError()
+
+
+def start_stage(work: schema.Work):
+    raise NotImplementedError()

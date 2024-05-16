@@ -6,7 +6,6 @@ from sqlmodel import JSON, Column, Field, SQLModel
 
 class WorkStatus(Enum):
     Created = "created"  # work is created but not started
-    Pending = "pending"
     Running = "running"
     Completed = "completed"
     Failed = "failed"

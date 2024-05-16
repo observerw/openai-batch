@@ -3,9 +3,8 @@ from typing import Iterable
 
 import openai
 
-from ..model import (
-    BatchStatus,
-)
+from ..db import schema
+from ..model import BatchStatus
 
 logger = logging.getLogger(__name__)
 
@@ -30,3 +29,7 @@ def check(batch_ids: set[str]) -> Iterable[BatchStatus]:
         statuses.append(BatchStatus(message=f"batch with id {batch_id} not found"))
 
     return statuses
+
+
+def running_stage(work: schema.Work):
+    raise NotImplementedError()

@@ -1,13 +1,10 @@
+import logging
 import os
 from abc import abstractmethod
 from typing import Iterable
-from venv import logger
 
 from rich.console import Console
 
-from openai_batch.db import schema
-
-from . import stage
 from .const import WORK_ID
 from .db import works_db
 from .model import (
@@ -16,8 +13,10 @@ from .model import (
     BatchOutputItem,
     WorkConfig,
 )
+from .stage.stage import run_stage
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class OpenAIBatchRunner:
@@ -51,22 +50,11 @@ class OpenAIBatchRunner:
             case str() as id if id.isdigit():
                 work = works_db.get_work(int(id))
                 if work is None:
-                    logger.error(f"Work {id} not found.")
-                    exit(-1)
-
-                match work.status:
-                    case schema.WorkStatus.Created:
-                        stage.start(work)
-                    case schema.WorkStatus.Running:
-                        stage.running(work)
-                    case schema.WorkStatus.Completed:
-                        stage.end(work)
-                    case other_status:
-                        logger.error(f"Work {id} unexpected in {other_status} status.")
-
-            case None:  # user start a new work
-                work = stage.create()
-                console.print("Work successfully started.", style="green")
-            case _:
-                logger.error(f"Invalid {WORK_ID}")
-                exit(-1)
+                    logger.error(f"Work with id {id} not found")
+                    exit(1)
+                run_stage(work)
+            case None:
+                work = run_stage()
+            case id:
+                logger.error(f"Invalid work id: {id}")
+                exit(1)

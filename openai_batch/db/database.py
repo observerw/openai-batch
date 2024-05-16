@@ -83,4 +83,4 @@ try:
     works_db = OpenAIBatchDatabase(global_config.db_path)
 except Exception as e:
     print(f"Failed to initialize database: {e}")
-    exit(-1)
+    exit(1)

@@ -3,6 +3,7 @@ from typing import Iterable
 
 import openai
 
+from ..db import schema
 from ..model import (
     BatchErrorItem,
     BatchRequestOutputItem,
@@ -37,3 +38,7 @@ def download_error(self, error_file_ids: Iterable[str]):
         # TODO
         items = (BatchErrorItem.model_validate_json(line) for line in lines)
         self.cls.download_error(items)
+
+
+def end_stage(work: schema.Work):
+    raise NotImplementedError()

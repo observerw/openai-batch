@@ -17,8 +17,6 @@ console = Console()
 
 def _colored_status(status: schema.WorkStatus) -> Text:
     match status:
-        case schema.WorkStatus.Pending:
-            return Text(status.value, style="yellow")
         case schema.WorkStatus.Running:
             return Text(status.value, style="blue")
         case schema.WorkStatus.Completed:

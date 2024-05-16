@@ -17,8 +17,8 @@ match platform.system():
         _config_dir = Path.home() / ".config" / "openai_batch"
     case "Darwin":
         _config_dir = Path.home() / "Library" / "Application Support" / "openai_batch"
-    case _:
-        raise NotImplementedError(f"Unsupported platform: {platform.system()}")
+    case other_system:
+        raise NotImplementedError(f"Unsupported platform: {other_system}")
 
 _config_path = _config_dir / "config.toml"
 
@@ -66,4 +66,4 @@ try:
     global_config = OpenAIBatchConfig._load()
 except Exception as e:
     print(f"Failed to load config: {e}")
-    exit(-1)
+    exit(1)
