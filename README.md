@@ -23,7 +23,7 @@ poetry add openai-batch
 |        `name`        |        `str`         |                                    Name of the work.                                    |
 | `completion_window`  | `datetime.timedelta` | Time window for the work to be completed. Only support `timedelta(hours=24)` currently. |
 |      `endpoint`      |        `str`         |    API endpoint. Only support `/v1/chat/completions` and `/v1/embeddings` currently.    |
-| `allow_same_dataset` |        `bool`        |            Whether to allow the same dataset to be processed multiple times.            |
+| `allow_same_dataset` |        `bool`        |              Whether to allow same dataset to be processed multiple times.              |
 |      `clean_up`      |        `bool`        |                     Whether to clean up the work after completion.                      |
 
 ## Methods
@@ -106,6 +106,4 @@ To run the script, you can simply run:
 python runner.py
 ```
 
-Then a daemon will be started. Within 24 hours, the daemon will automatically download the results and save them.
-
- 
+Then a task will be scheduled. Within 24 hours, the task will automatically download the results and save them.

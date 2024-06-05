@@ -16,8 +16,20 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class WorkConfig(BaseModel):
+    """Work configuration.
+
+    Args:
+        name (str, optional): Name of the work. Defaults to None.
+        completion_window (timedelta, optional): Time window to wait for the completion. Defaults to 24 hours.
+        check_interval (timedelta, optional): Interval to check the work status. Defaults to 4 hours.
+        endpoint (Literal["/v1/chat/completions", "/v1/embeddings"], optional): Endpoint to use. Defaults to "/v1/chat/completions".
+        allow_same_dataset (bool, optional): Allow the same dataset to be processed multiple times. Defaults to False.
+        clean_up (bool, optional): Clean up the work after completion. Defaults to True.
+    """
+
     name: str | None = None
     completion_window: timedelta = timedelta(hours=24)
+    check_interval: timedelta = timedelta(hours=4)
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
     allow_same_dataset: bool = False
     clean_up: bool = True

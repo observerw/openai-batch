@@ -3,6 +3,7 @@ from typing import Iterable
 
 import openai
 
+from .. import runner
 from ..db import schema
 from ..model import BatchStatus
 
@@ -31,5 +32,8 @@ def check(batch_ids: set[str]) -> Iterable[BatchStatus]:
     return statuses
 
 
-def running_stage(work: schema.Work):
+def to_checked(
+    work: schema.Work,
+    cls: type["runner.OpenAIBatchRunner"],
+) -> schema.Work:
     raise NotImplementedError()

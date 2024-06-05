@@ -1,26 +1,20 @@
-import logging
 from typing import Iterable
 
 import openai
 
-from ..db import schema
+from .. import runner
 from ..model import (
     BatchErrorItem,
     BatchRequestOutputItem,
 )
-
-logger = logging.getLogger(__name__)
-
-
-def unregister_task_windows(id: int):
-    raise NotImplementedError()
+import types
 
 
-def unregister_task_unix(id: int):
-    raise NotImplementedError()
+def cron_name(work_id: int) -> str:
+    return f"openai_batch_{work_id}"
 
 
-def download(self, output_file_ids: Iterable[str]):
+def download(cls: type["runner.OpenAIBatchRunner"], output_file_ids: Iterable[str]):
     for file_id in output_file_ids:
         content = openai.files.content(file_id)
         lines = (line for line in content.iter_lines())
@@ -28,17 +22,23 @@ def download(self, output_file_ids: Iterable[str]):
             BatchRequestOutputItem.model_validate_json(line).to_output()
             for line in lines
         )
-        self.cls.download(items)
+        cls.download(items)
 
 
-def download_error(self, error_file_ids: Iterable[str]):
+def download_error(
+    cls: type["runner.OpenAIBatchRunner"],
+    error_file_ids: Iterable[str],
+):
     for file_id in error_file_ids:
         content = openai.files.content(file_id)
         lines = (line for line in content.iter_lines())
         # TODO
         items = (BatchErrorItem.model_validate_json(line) for line in lines)
-        self.cls.download_error(items)
+        cls.download_error(items)
 
 
-def end_stage(work: schema.Work):
-    raise NotImplementedError()
+def load_cls(script: str, cls_name: str) -> type["runner.OpenAIBatchRunner"]:
+    mod = types.ModuleType("mod")
+    exec(script, mod.__dict__)
+
+    return getattr(mod, cls_name)

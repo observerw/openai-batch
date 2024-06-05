@@ -1,4 +1,4 @@
-import os
+import subprocess as sp
 from datetime import datetime
 from typing import Annotated, Iterable, Optional
 
@@ -8,20 +8,24 @@ from rich.table import Table
 from rich.text import Text
 
 from .config import global_config
+from .const import INTERRUPT, TO_STATUS, WORK_ID
 from .db import schema, works_db
 from .utils import recursive_getattr, recursive_setattr
 
 app = typer.Typer()
 console = Console()
+err_console = Console(stderr=True)
 
 
 def _colored_status(status: schema.WorkStatus) -> Text:
     match status:
-        case schema.WorkStatus.Running:
+        case schema.WorkStatus.Created:
+            return Text(status.value, style="yellow")
+        case schema.WorkStatus.Checked:
             return Text(status.value, style="blue")
         case schema.WorkStatus.Completed:
             return Text(status.value, style="green")
-        case schema.WorkStatus.Failed:
+        case schema.WorkStatus.Failed | schema.WorkStatus.Canceled:
             return Text(status.value, style="red")
         case _:
             return Text(status.value)
@@ -87,27 +91,30 @@ def list(
 
         return True
 
-    works = [work for work in works_db.list_works() if accept(work)]
-
-    _show(works)
+    _show([work for work in works_db.list_works() if accept(work)])
 
 
 @app.command()
 def delete(id: Annotated[int, typer.Argument(help="Work ID")]):
     work = works_db.delete_work(id)
     if work is None:
-        console.print(f"Work with id: {id} not found")
-        return
+        err_console.print(f"Work with id: {id} not found")
+        exit(1)
 
-    if pid := work.pid:
-        os.kill(pid, 9)
+    sp.run(
+        [
+            work.interpreter_path,
+            "-c",
+            work.script,
+        ],
+        env={
+            WORK_ID: str(work.id),
+            TO_STATUS: str(schema.WorkStatus.Canceled),
+            INTERRUPT: "1",
+        },
+    ).check_returncode()
 
-    console.print(f"Deleted work with id: {id}")
-
-
-@app.command()
-def resume(id: Annotated[int, typer.Argument(help="Work ID")]):
-    raise NotImplementedError()
+    _show([work])
 
 
 @app.command()
