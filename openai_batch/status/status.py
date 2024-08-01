@@ -27,7 +27,7 @@ def to_status(
     try:
         match (prev_status, status):
             case (schema.WorkStatus.Created, schema.WorkStatus.Checked):
-                work = from_created(work, cls=cls)
+                from_created(work, cls=cls)
                 to_checked(work, cls=cls)
             case (schema.WorkStatus.Checked, schema.WorkStatus.Checked):
                 to_checked(work, cls=cls)

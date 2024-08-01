@@ -1,9 +1,11 @@
 import subprocess as sp
+import time
 from datetime import datetime
 from typing import Annotated, Iterable, Optional
 
 import typer
 from rich.console import Console
+from rich.progress import Progress
 from rich.table import Table
 from rich.text import Text
 
@@ -146,3 +148,34 @@ def config(
             console.print(f"{item}: {value}")
         except AttributeError:
             console.print(f"Config item {item} not found")
+
+
+@app.command()
+def inspect(id: Annotated[int, typer.Argument(help="Work ID")]):
+    """
+    Inspect current running processes of a work.
+    """
+
+    work = works_db.get_work(id)
+    if work is None:
+        console.print(f"Work with id: {id} not found")
+        return
+
+    with Progress() as progress:
+        task_ids = [
+            progress.add_task(
+                process.description,
+                total=process.total,
+            )
+            for process in work.processes
+        ]
+        pids = [process.pid for process in work.processes]
+
+        while not progress.finished:
+            with works_db.session() as session:
+                for pid, task_id in zip(pids, task_ids):
+                    process = session.get(schema.ProcessStatus, pid)
+                    assert process is not None
+                    progress.update(task_id, completed=process.current)
+
+            time.sleep(1)

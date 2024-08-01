@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlmodel import JSON, Column, Field, SQLModel
+from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 
 class WorkStatus(Enum):
@@ -38,3 +38,16 @@ class Work(SQLModel, table=True):
     # use JSON column to store the id list
     undone_batch_ids: list[str] = Field(default=[], sa_column=Column(JSON))
     done_batch_ids: list[str] = Field(default=[], sa_column=Column(JSON))
+
+    # ----------------------------- running processes ---------------------------- #
+    processes: list["ProcessStatus"] = Relationship(back_populates="work")
+
+
+class ProcessStatus(SQLModel, table=True):
+    pid: int = Field(primary_key=True)
+
+    work: Work | None = Relationship(back_populates="processes")
+
+    description: str = Field()
+    current: int = Field()
+    total: int = Field()

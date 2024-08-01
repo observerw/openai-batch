@@ -1,22 +1,26 @@
 import hashlib
 import importlib.resources
 import logging
+import os
 import platform
 import subprocess as sp
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import IO, Iterable, Sequence
 
 import openai
-import sqlalchemy
 from crontab import CronTab
-from openai.types import Batch, FileObject
+from openai.types import FileObject
+from sqlmodel import select
 
 from .. import runner, scripts
 from ..const import CHUNK_SIZE, MAX_FILE_SIZE
 from ..db import schema, works_db
 from ..model import BatchInputItem, BatchRequestInputItem, WorkConfig
+from ..openai import openai_file
+from ..openai.upload import UploadStatus
 from ..utils import to_minutes
 from .exception import OpenAIBatchException
 from .utils import cron_name
@@ -77,33 +81,34 @@ class UploadResult:
 
 def upload(config: WorkConfig, files: Sequence[TempFile]) -> UploadResult:
     file_count = len(files)
+    pid = os.getpid()
+
+    def handle_upload_chunk(description: str, status: UploadStatus):
+        works_db.update_process_status(pid, description=description, status=status)
 
     uploaded_files: list[FileObject] = []
     for i, file in enumerate(files):
-        file_obj = openai.files.create(file=file, purpose="batch")
+        file_obj = openai_file.upload(
+            file=file,
+            purpose="batch",
+            on_upload_chunk=partial(
+                handle_upload_chunk,
+                description=f"uploading {file.name} ({i + 1}/{file_count})",
+            ),
+        )
         uploaded_files.append(file_obj)
 
         logger.info(f"{file.name} uploaded ({i + 1}/{file_count})")
 
-    # comp_window = config.completion_window
-    # batches = [
-    #     openai.batches.create(
-    #         input_file_id=file.id,
-    #         # completion_window=f"{comp_window.days}d{comp_window.seconds}s",
-    #         completion_window="24h",  # FIXME
-    #         endpoint=config.endpoint,
-    #     )
-    #     for file in uploaded_files
-    # ]
-
-    batches: list[Batch] = []
-    for file in uploaded_files:
-        batch = openai.batches.create(
+    batches = [
+        openai.batches.create(
             input_file_id=file.id,
-            completion_window="24h",  # FIXME only support 24h
+            # completion_window=f"{comp_window.days}d{comp_window.seconds}s",
+            completion_window="24h",  # FIXME
             endpoint=config.endpoint,
         )
-        batches.append(batch)
+        for file in uploaded_files
+    ]
 
     return UploadResult(
         created=datetime.now(),
@@ -157,7 +162,7 @@ def register_task_unix(
 def from_created(
     work: schema.Work,
     cls: type["runner.OpenAIBatchRunner"],
-) -> schema.Work:
+):
     """
     Upload the batch input to OpenAI and register work in the system.
     """
@@ -171,14 +176,17 @@ def from_created(
 
     # check if same dataset exists
     if not config.allow_same_dataset:
-        try:
-            assert work.id is not None
-            with works_db.update_work(work.id) as work:
-                work.dataset_hash = transform_result.dataset_hash
-        except sqlalchemy.exc.IntegrityError:
-            raise OpenAIBatchException(
-                message="The dataset has been used by another work"
-            )
+        with works_db.session() as session:
+            other_work = session.exec(
+                select(schema.Work).where(
+                    schema.Work.dataset_hash == transform_result.dataset_hash
+                )
+            ).first()
+
+            if other_work is not None:
+                raise OpenAIBatchException(
+                    message=f"Same dataset already exists in work {other_work.id}"
+                )
 
     upload_result = upload(
         config=config,
@@ -197,5 +205,3 @@ def from_created(
             register_task_unix(work, cls)
         case other:
             raise NotImplementedError(f"Unsupported platform: {other}")
-
-    return work

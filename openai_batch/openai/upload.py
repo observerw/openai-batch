@@ -1,9 +1,13 @@
 from dataclasses import dataclass
-from typing import IO, Callable, Iterable
+from typing import IO, Callable, Iterable, Literal
 
 import requests as rq
 from openai import OpenAI
 from openai.types.file_object import FileObject
+from requests_toolbelt import (
+    MultipartEncoder,
+    MultipartEncoderMonitor,
+)
 
 from ..const import K
 from .utils import check_file_size
@@ -32,11 +36,7 @@ class UploadStatus(StreamChunk):
 class RetrieveChunk(StreamChunk):
     data: bytes
 
-    def decode(self, encoding: str = "utf-8") -> str:
-        return self.data.decode(encoding)
 
-
-DEFAULT_UPLOAD_CHUNK_SIZE = 16 * K
 DEFAULT_RETRIEVE_CHUNK_SIZE = 16 * K
 
 
@@ -79,36 +79,36 @@ class OpenAIFile:
 
     def upload(
         self,
-        data: IO[bytes],
-        chunk_size: int = DEFAULT_UPLOAD_CHUNK_SIZE,
+        file: IO[bytes],
+        purpose: Literal["assistants", "batch", "fine-tune", "vision"],
         on_upload_chunk: Callable[[UploadStatus], None] | None = None,
     ) -> FileObject:
-        file_size = check_file_size(data)
+        file_size = check_file_size(file)
 
-        def chunked_upload() -> Iterable[bytes]:
-            current = 0
-            while True:
-                chunk_data = data.read(chunk_size)
-                current += len(chunk_data)
+        data = MultipartEncoder(
+            {
+                "file": file,
+                "purpose": purpose,
+            }
+        )
 
-                if not chunk_data:
-                    break
+        def handle_monitor(monitor: MultipartEncoderMonitor):
+            assert on_upload_chunk is not None
+            on_upload_chunk(
+                UploadStatus(
+                    current=monitor.bytes_read,
+                    total=file_size,
+                )
+            )
 
-                if on_upload_chunk:
-                    on_upload_chunk(
-                        UploadStatus(
-                            current=current,
-                            total=file_size,
-                        )
-                    )
-
-                yield chunk_data
+        if on_upload_chunk:
+            data = MultipartEncoderMonitor(data, handle_monitor)
 
         resp = self.session.post(
             self._upload_base_url(),
-            data=chunked_upload(),
+            data=data,
             headers={
-                "Content-Type": "application/octet-stream",
+                "Content-Type": data.content_type,
                 **self._auth_headers,
             },
         )
@@ -130,7 +130,10 @@ class OpenAIFile:
 
         current = 0
         total = int(meta.bytes)
-        for chunk in resp.iter_content(chunk_size):
+        for chunk in resp.iter_content(
+            chunk_size=chunk_size,
+            decode_unicode=True,
+        ):
             current += len(chunk)
             yield RetrieveChunk(
                 current=current,

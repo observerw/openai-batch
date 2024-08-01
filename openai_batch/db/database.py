@@ -1,11 +1,12 @@
 import contextlib
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Final, Iterable
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from ..config import global_config
+from ..openai.upload import StreamChunk
 from . import schema
 
 
@@ -41,7 +42,10 @@ class OpenAIBatchDatabase:
 
         return work
 
-    def list_works(self, statuses: set[schema.WorkStatus] | None = None) -> Iterable[schema.Work]:
+    def list_works(
+        self,
+        statuses: set[schema.WorkStatus] | None = None,
+    ) -> Iterable[schema.Work]:
         with Session(self.engine) as session:
             statement = select(schema.Work)
 
@@ -86,9 +90,41 @@ class OpenAIBatchDatabase:
 
         return work
 
+    def update_process_status(
+        self,
+        pid: int,
+        description: str,
+        status: "StreamChunk | None",
+    ):
+        with self.session() as session:
+            process = session.get(schema.ProcessStatus, pid)
+
+            match (status, process):
+                # update existing process status
+                case (StreamChunk() as status, schema.ProcessStatus() as process):
+                    process.current = status.current
+                    process.total = status.total
+                    session.add(process)
+                # delete process status
+                case (None, schema.ProcessStatus() as process):
+                    session.delete(process)
+                # create new process status
+                case (StreamChunk() as status, None):
+                    process = schema.ProcessStatus(
+                        pid=pid,
+                        current=status.current,
+                        total=status.total,
+                        description=description,
+                    )
+                    session.add(process)
+                case _:
+                    pass
+
+            session.commit()
+
 
 try:
-    works_db = OpenAIBatchDatabase(global_config.db_path)
+    works_db: Final = OpenAIBatchDatabase(global_config.db_path)
 except Exception as e:
     print(f"Failed to initialize database: {e}")
     exit(1)
