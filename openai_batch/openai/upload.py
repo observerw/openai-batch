@@ -95,7 +95,12 @@ class OpenAIFile:
                     break
 
                 if on_upload_chunk:
-                    on_upload_chunk(UploadStatus(current, file_size))
+                    on_upload_chunk(
+                        UploadStatus(
+                            current=current,
+                            total=file_size,
+                        )
+                    )
 
                 yield chunk_data
 
@@ -108,7 +113,7 @@ class OpenAIFile:
             },
         )
 
-        return FileObject.model_validate_json(resp.json())
+        return FileObject.model_validate(resp.json())
 
     def retrieve(
         self,
@@ -138,4 +143,4 @@ class OpenAIFile:
             self._retrieve_meta_base_url(file_id),
             headers=self._auth_headers,
         )
-        return FileObject.model_validate_json(resp.json())
+        return FileObject.model_validate(resp.json())
