@@ -88,7 +88,7 @@ def create_work(cls: type[OpenAIBatchRunner]) -> schema.Work:
     assert source_file_path is not None
     source_file_path = Path(source_file_path)
 
-    script = Path(source_file_path).read_text()
+    script = source_file_path.read_text()
     interpreter_path = sys.executable
     cwd = source_file_path.parent
 

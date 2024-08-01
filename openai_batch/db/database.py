@@ -26,18 +26,18 @@ class OpenAIBatchDatabase:
         with Session(self.engine) as session:
             session.add(work)
             session.commit()
+            # Automatic attribute refresh must be bound to session
+            session.refresh(work)
 
         return work
 
     def get_work(self, work_id: int) -> schema.Work | None:
         with Session(self.engine) as session:
-            work = session.exec(
-                select(schema.Work).where(schema.Work.id == work_id)
-            ).one_or_none()
+            work = session.get(schema.Work, work_id)
 
         return work
 
-    def list_works(self, statuses: set[str] | None = None) -> Iterable[schema.Work]:
+    def list_works(self, statuses: set[schema.WorkStatus] | None = None) -> Iterable[schema.Work]:
         with Session(self.engine) as session:
             statement = select(schema.Work)
 
@@ -50,9 +50,7 @@ class OpenAIBatchDatabase:
 
     def delete_work(self, work_id: int) -> schema.Work | None:
         with Session(self.engine) as session:
-            work = session.exec(
-                select(schema.Work).where(schema.Work.id == work_id)
-            ).one_or_none()
+            work = session.get(schema.Work, work_id)
 
             if work:
                 session.delete(work)
@@ -64,9 +62,7 @@ class OpenAIBatchDatabase:
     @contextlib.contextmanager
     def update_work(self, work_id: int):
         with Session(self.engine) as session:
-            work = session.exec(
-                select(schema.Work).where(schema.Work.id == work_id)
-            ).one_or_none()
+            work = session.get(schema.Work, work_id)
 
             if work is None:
                 raise ValueError(f"work with id: {work_id} not found")

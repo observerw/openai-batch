@@ -27,7 +27,7 @@ class Work(SQLModel, table=True):
 
     # required only when allow_same_dataset is False
     dataset_hash: str | None = Field(default=None, unique=True)
-    status: WorkStatus = Field(default=WorkStatus.Created)
+    status: WorkStatus = Field(default=WorkStatus.Created, index=True)
 
     # -------------------------------- resume info ------------------------------- #
 

@@ -3,8 +3,7 @@ import os
 import platform
 from pathlib import Path
 
-import tomli_w
-import tomllib
+import toml
 from pydantic import BaseModel, ConfigDict
 
 match platform.system():
@@ -29,11 +28,11 @@ class OpenAIBatchConfig(BaseModel):
         validate_assignment=True,
     )
 
-    save_path: Path = Path.home() / ".openai_batch"
+    save_path: str = str(Path.home() / ".openai_batch")
 
     @property
     def db_path(self) -> Path:
-        return self.save_path / "works.sqlite"
+        return Path(self.save_path) / "works.sqlite"
 
     @classmethod
     def _load(cls) -> "OpenAIBatchConfig":
@@ -43,12 +42,11 @@ class OpenAIBatchConfig(BaseModel):
             config._save()
             return config
 
-        with config_path.open("rb") as f:
-            return cls.model_validate(tomllib.load(f))
+        return cls.model_validate(toml.load(config_path))
 
     def _save(self) -> None:
-        with config_path.open("wb") as f:
-            tomli_w.dump(self.model_dump(), f)
+        with config_path.open("w") as f:
+            toml.dump(self.model_dump(), f)
 
     @contextlib.contextmanager
     @staticmethod
