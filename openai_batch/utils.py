@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -21,3 +21,7 @@ def recursive_getattr(obj: object, attr: str) -> Any:
 
 def to_minutes(delta: timedelta) -> int:
     return int(delta.total_seconds() // 60)
+
+
+def timestamp() -> int:
+    return int(datetime.now().timestamp())

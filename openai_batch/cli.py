@@ -8,7 +8,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .config import global_config
-from .const import INTERRUPT, TO_STATUS, WORK_ID
+from .const import TO_STATUS, WORK_ID
 from .db import schema, works_db
 from .utils import recursive_getattr, recursive_setattr
 
@@ -49,6 +49,8 @@ def _show(works: Iterable[schema.Work]):
 
 @app.command()
 def get(id: Annotated[int, typer.Argument(help="Work ID")]):
+    """Get work from ID."""
+
     work = works_db.get_work(id)
     if work is None:
         console.print(f"Work with id: {id} not found")
@@ -110,7 +112,6 @@ def delete(id: Annotated[int, typer.Argument(help="Work ID")]):
         env={
             WORK_ID: str(work.id),
             TO_STATUS: str(schema.WorkStatus.Canceled),
-            INTERRUPT: "1",
         },
     ).check_returncode()
 

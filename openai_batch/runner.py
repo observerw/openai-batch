@@ -1,7 +1,6 @@
 import inspect
 import logging
 import os
-import signal
 import sys
 from abc import abstractmethod
 from pathlib import Path
@@ -10,8 +9,10 @@ from typing import Iterable
 import pidfile
 from rich.console import Console
 
+from .utils import timestamp
+
 from .config import config_dir
-from .const import INTERRUPT, TO_STATUS, WORK_ID
+from .const import TO_STATUS, WORK_ID
 from .db import schema, works_db
 from .model import (
     BatchErrorItem,
@@ -64,23 +65,15 @@ class OpenAIBatchRunner:
                 logger.error(f"Unexpected work id: {id}")
                 exit(1)
 
-        pidfile_path = config_dir / f"{work.id}.pid"
-        if pidfile_path.exists():
-            if INTERRUPT in os.environ:
-                logger.info("Interrupting running process")
-                pid = int(pidfile_path.read_text())
-                os.kill(pid, signal.SIGINT)
-            else:
-                logger.error("Another process is running")
-                exit(1)
+        pidfile_path = config_dir / f"{work.id}-{timestamp()}.pid"
 
-        with pidfile.PIDFile(config_dir / f"{work.id}.pid"):
+        with pidfile.PIDFile(pidfile_path):
             status = (
                 schema.WorkStatus(status)
                 if (status := os.environ.get(TO_STATUS))
                 else schema.WorkStatus.Checked
             )
-            to_status(work, status, cls=cls)
+            to_status(work, status, cls)
 
 
 def create_work(cls: type[OpenAIBatchRunner]) -> schema.Work:

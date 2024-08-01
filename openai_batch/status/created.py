@@ -6,31 +6,30 @@ import subprocess as sp
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
-from typing import IO, Iterable
+from typing import IO, Iterable, Sequence
 
 import openai
 import sqlalchemy
 from crontab import CronTab
+from openai.types import Batch, FileObject
 
 from .. import runner, scripts
 from ..const import CHUNK_SIZE, MAX_FILE_SIZE
 from ..db import schema, works_db
-from ..model import (
-    BatchInputItem,
-    BatchRequestInputItem,
-    WorkConfig,
-)
+from ..model import BatchInputItem, BatchRequestInputItem, WorkConfig
 from ..utils import to_minutes
 from .exception import OpenAIBatchException
 from .utils import cron_name
 
 logger = logging.getLogger(__name__)
 
+type TempFile = IO[bytes]
+
 
 @dataclass
 class TransformResult:
     dataset_hash: str | None
-    files: list[IO[bytes]]
+    files: list[TempFile]
 
 
 def transform(
@@ -40,7 +39,7 @@ def transform(
     hash = not config.allow_same_dataset
     hasher = hashlib.sha1()
 
-    files: list[IO[bytes]] = []
+    files: list[TempFile] = []
     curr_file = tempfile.TemporaryFile(buffering=CHUNK_SIZE)
     curr_file_size = 0
 
@@ -76,19 +75,35 @@ class UploadResult:
     batch_ids: set[str]
 
 
-def upload(config: WorkConfig, files: list[IO[bytes]]) -> UploadResult:
-    uploaded_files = [openai.files.create(file=file, purpose="batch") for file in files]
+def upload(config: WorkConfig, files: Sequence[TempFile]) -> UploadResult:
+    file_count = len(files)
+
+    uploaded_files: list[FileObject] = []
+    for i, file in enumerate(files):
+        file_obj = openai.files.create(file=file, purpose="batch")
+        uploaded_files.append(file_obj)
+
+        logger.info(f"{file.name} uploaded ({i + 1}/{file_count})")
 
     # comp_window = config.completion_window
-    batches = [
-        openai.batches.create(
+    # batches = [
+    #     openai.batches.create(
+    #         input_file_id=file.id,
+    #         # completion_window=f"{comp_window.days}d{comp_window.seconds}s",
+    #         completion_window="24h",  # FIXME
+    #         endpoint=config.endpoint,
+    #     )
+    #     for file in uploaded_files
+    # ]
+
+    batches: list[Batch] = []
+    for file in uploaded_files:
+        batch = openai.batches.create(
             input_file_id=file.id,
-            # completion_window=f"{comp_window.days}d{comp_window.seconds}s",
-            completion_window="24h",  # FIXME
+            completion_window="24h",  # FIXME only support 24h
             endpoint=config.endpoint,
         )
-        for file in uploaded_files
-    ]
+        batches.append(batch)
 
     return UploadResult(
         created=datetime.now(),
@@ -154,6 +169,7 @@ def from_created(
         batch_input=cls.upload(),
     )
 
+    # check if same dataset exists
     if not config.allow_same_dataset:
         try:
             assert work.id is not None
