@@ -2,6 +2,7 @@ import contextlib
 import os
 import platform
 from pathlib import Path
+from typing import Final
 
 import toml
 from pydantic import BaseModel, ConfigDict
@@ -19,7 +20,7 @@ match platform.system():
     case other_system:
         raise NotImplementedError(f"Unsupported platform: {other_system}")
 
-config_path = config_dir / "config.toml"
+config_path: Final = config_dir / "config.toml"
 
 
 class OpenAIBatchConfig(BaseModel):

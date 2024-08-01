@@ -3,8 +3,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from sqlalchemy import create_engine
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from ..config import global_config
 from . import schema
@@ -21,6 +20,11 @@ class OpenAIBatchDatabase:
 
         self.engine = create_engine(f"sqlite:///{database}")
         SQLModel.metadata.create_all(self.engine)
+
+    @contextlib.contextmanager
+    def session(self):
+        with Session(self.engine) as session:
+            yield session
 
     def create_work(self, work: schema.Work) -> schema.Work:
         with Session(self.engine) as session:

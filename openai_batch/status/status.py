@@ -20,12 +20,6 @@ def to_status(
     执行转移状态操作，执行完毕后将状态设置为想要转移到的状态。
     """
 
-    # def handle_interrupt(_signum, _frame):
-    #     to_status(work, schema.WorkStatus.Created, cls=cls)
-
-    # # 无论何种情况下进程被中断，都需要先将状态设置为 Paused
-    # signal.signal(signal.SIGINT | signal.SIGTERM, handle_interrupt)
-
     prev_status = work.status
     if cls is None:
         cls = load_cls(work.script, work.class_name)
@@ -55,5 +49,5 @@ def to_status(
     except StatusInterrupt as interrupt:  # switch to another stage
         return to_status(work, interrupt.status, cls=cls)
     except OpenAIBatchException as e:  # handle the exception
-        logger.error(f"Error occured: {e.message}")
+        logger.exception(f"Error occured: {e.message}")
         return to_status(work, schema.WorkStatus.Failed, cls=cls)

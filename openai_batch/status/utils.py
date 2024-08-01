@@ -1,13 +1,10 @@
+import types
 from typing import Iterable
 
 import openai
 
 from .. import runner
-from ..model import (
-    BatchErrorItem,
-    BatchRequestOutputItem,
-)
-import types
+from ..model import BatchErrorItem, BatchRequestOutputItem
 
 
 def cron_name(work_id: int) -> str:
