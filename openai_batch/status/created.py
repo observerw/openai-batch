@@ -1,5 +1,5 @@
 import hashlib
-import importlib.resources
+import importlib.resources as res
 import logging
 import os
 import platform
@@ -123,7 +123,7 @@ def register_task_windows(
     assert work.id is not None
 
     try:
-        script = importlib.resources.read_text(scripts, "register-work.ps1")
+        script = res.files(scripts).joinpath("register_task.ps1").read_text()
         sp.run(
             args=[
                 "powershell.exe",

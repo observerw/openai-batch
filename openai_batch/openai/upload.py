@@ -34,7 +34,7 @@ class UploadStatus(StreamChunk):
 
 @dataclass(frozen=True)
 class RetrieveChunk(StreamChunk):
-    data: bytes
+    line: str
 
 
 DEFAULT_RETRIEVE_CHUNK_SIZE = 16 * K
@@ -130,15 +130,15 @@ class OpenAIFile:
 
         current = 0
         total = int(meta.bytes)
-        for chunk in resp.iter_content(
+        for line in resp.iter_lines(
             chunk_size=chunk_size,
             decode_unicode=True,
         ):
-            current += len(chunk)
+            current += len(line)
             yield RetrieveChunk(
                 current=current,
                 total=total,
-                data=chunk,
+                line=line,
             )
 
     def retrieve_meta(self, file_id: str) -> FileObject:

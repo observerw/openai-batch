@@ -1,37 +1,53 @@
+import os
 import types
-from typing import Iterable
+from typing import Callable, Iterable
 
-import openai
+from pydantic import BaseModel
 
 from .. import runner
-from ..model import BatchErrorItem, BatchRequestOutputItem
+from ..db import works_db
+from ..model import BatchErrorItem, BatchOutputItem
+from ..openai import openai_file
 
 
 def cron_name(work_id: int) -> str:
     return f"openai_batch_{work_id}"
 
 
+def _concat[T](gens: Iterable[Iterable[T]]) -> Iterable[T]:
+    for gen in gens:
+        yield from gen
+
+
+def _download[T: BaseModel](
+    file_ids: Iterable[str],
+    model: type[T],
+    download: Callable[[Iterable[T]], None],
+):
+    pid = os.getpid()
+
+    def transform_file(file_id: str):
+        for chunk in openai_file.retrieve(file_id):
+            works_db.update_process_status(
+                pid=pid,
+                description="",
+                status=chunk,
+            )
+
+            yield model.model_validate_json(chunk.line)
+
+    download(_concat(transform_file(file_id) for file_id in file_ids))
+
+
 def download(cls: type["runner.OpenAIBatchRunner"], output_file_ids: Iterable[str]):
-    for file_id in output_file_ids:
-        content = openai.files.content(file_id)
-        lines = (line for line in content.iter_lines())
-        items = (
-            BatchRequestOutputItem.model_validate_json(line).to_output()
-            for line in lines
-        )
-        cls.download(items)
+    _download(output_file_ids, BatchOutputItem, cls.download)
 
 
 def download_error(
     cls: type["runner.OpenAIBatchRunner"],
     error_file_ids: Iterable[str],
 ):
-    for file_id in error_file_ids:
-        content = openai.files.content(file_id)
-        lines = (line for line in content.iter_lines())
-        # TODO
-        items = (BatchErrorItem.model_validate_json(line) for line in lines)
-        cls.download_error(items)
+    _download(error_file_ids, BatchErrorItem, cls.download_error)
 
 
 def load_cls(script: str, cls_name: str) -> type["runner.OpenAIBatchRunner"]:
