@@ -25,19 +25,21 @@ class OpenAIBatchDatabase:
     @contextlib.contextmanager
     def session(self):
         with Session(self.engine) as session:
-            yield session
+            try:
+                yield session
+            finally:
+                session.commit()  # why sqlmodel can't auto commit 😅
 
     def create_work(self, work: schema.Work) -> schema.Work:
-        with Session(self.engine) as session:
+        with self.session() as session:
             session.add(work)
-            session.commit()
             # Automatic attribute refresh must be bound to session
             session.refresh(work)
 
         return work
 
     def get_work(self, work_id: int) -> schema.Work | None:
-        with Session(self.engine) as session:
+        with self.session() as session:
             work = session.get(schema.Work, work_id)
 
         return work
@@ -46,7 +48,7 @@ class OpenAIBatchDatabase:
         self,
         statuses: set[schema.WorkStatus] | None = None,
     ) -> Iterable[schema.Work]:
-        with Session(self.engine) as session:
+        with self.session() as session:
             statement = select(schema.Work)
 
             if statuses:
@@ -57,19 +59,17 @@ class OpenAIBatchDatabase:
         return works
 
     def delete_work(self, work_id: int) -> schema.Work | None:
-        with Session(self.engine) as session:
+        with self.session() as session:
             work = session.get(schema.Work, work_id)
 
             if work:
                 session.delete(work)
 
-            session.commit()
-
         return work
 
     @contextlib.contextmanager
     def update_work(self, work_id: int):
-        with Session(self.engine) as session:
+        with self.session() as session:
             work = session.get(schema.Work, work_id)
 
             if work is None:
@@ -78,7 +78,6 @@ class OpenAIBatchDatabase:
             yield work
 
             session.add(work)
-            session.commit()
 
     def update_work_status(
         self,
@@ -119,8 +118,6 @@ class OpenAIBatchDatabase:
                     session.add(process)
                 case _:
                     pass
-
-            session.commit()
 
 
 try:

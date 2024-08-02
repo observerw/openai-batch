@@ -21,7 +21,7 @@ class Work(SQLModel, table=True):
         default_factory=datetime.now,
         sa_column_kwargs={"onupdate": datetime.now},
     )
-    name: str | None = Field()
+    name: str | None = Field(default=None)
 
     # ------------------------------- Running info ------------------------------- #
 
@@ -31,10 +31,10 @@ class Work(SQLModel, table=True):
 
     # -------------------------------- resume info ------------------------------- #
 
-    interpreter_path: str = Field()  # The interpreter path used to create the task
-    script: str = Field()  # The full script of user defined Runner
-    class_name: str = Field()  # The class name of user defined Runner
-    work_dir: str = Field()  # The work directory of user defined Runner
+    interpreter_path: str  # The interpreter path used to create the task
+    script: str  # The full script of user defined Runner
+    class_name: str  # The class name of user defined Runner
+    work_dir: str  # The work directory of user defined Runner
     # use JSON column to store the id list
     undone_batch_ids: list[str] = Field(default=[], sa_column=Column(JSON))
     done_batch_ids: list[str] = Field(default=[], sa_column=Column(JSON))
@@ -44,10 +44,11 @@ class Work(SQLModel, table=True):
 
 
 class ProcessStatus(SQLModel, table=True):
-    pid: int = Field(primary_key=True)
+    pid: int = Field(primary_key=True)  # explicitly specified, can not be None
 
+    work_id: int | None = Field(default=None, foreign_key="work.id")
     work: Work | None = Relationship(back_populates="processes")
 
-    description: str = Field()
-    current: int = Field()
-    total: int = Field()
+    description: str
+    current: int
+    total: int
