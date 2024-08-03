@@ -16,7 +16,6 @@ from .utils import recursive_getattr, recursive_setattr
 
 app = typer.Typer()
 console = Console()
-err_console = Console(stderr=True)
 
 
 def _colored_status(status: schema.WorkStatus) -> Text:
@@ -40,11 +39,7 @@ def _show(works: Iterable[schema.Work]):
     table.add_column("Status")
 
     for work in works:
-        table.add_row(
-            str(work.id),
-            work.name,
-            _colored_status(work.status),
-        )
+        table.add_row(str(work.id), work.name, _colored_status(work.status))
 
     console.print(table)
 
@@ -55,7 +50,7 @@ def get(id: Annotated[int, typer.Argument(help="Work ID")]):
 
     work = works_db.get_work(id)
     if work is None:
-        console.print(f"Work with id: {id} not found")
+        raise ValueError(f"Work with id: {id} not found")
         return
 
     _show([work])
@@ -102,8 +97,7 @@ def list(
 def delete(id: Annotated[int, typer.Argument(help="Work ID")]):
     work = works_db.delete_work(id)
     if work is None:
-        err_console.print(f"Work with id: {id} not found")
-        exit(1)
+        raise ValueError(f"Work with id: {id} not found")
 
     sp.run(
         [
@@ -133,21 +127,10 @@ def config(
 ):
     if new_value:
         with global_config.update() as config:
-            try:
-                recursive_getattr(config, item)
-            except AttributeError:
-                console.print(f"Config item {item} not found")
-
-            try:
-                recursive_setattr(config, item, new_value)
-            except AttributeError:
-                console.print(f"Cannot set config item {item}")
+            recursive_setattr(config, item, new_value)
     else:
-        try:
-            value = recursive_getattr(global_config, item)
-            console.print(f"{item}: {value}")
-        except AttributeError:
-            console.print(f"Config item {item} not found")
+        value = recursive_getattr(global_config, item)
+        console.print(f"{item}: {value}")
 
 
 @app.command()
@@ -158,8 +141,7 @@ def inspect(id: Annotated[int, typer.Argument(help="Work ID")]):
 
     work = works_db.get_work(id)
     if work is None:
-        console.print(f"Work with id: {id} not found")
-        return
+        raise ValueError(f"Work with id: {id} not found")
 
     with Progress() as progress:
         task_ids = [
