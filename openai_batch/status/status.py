@@ -2,9 +2,10 @@ import logging
 
 from .. import runner
 from ..db import schema, works_db
+from ..exception import OpenAIBatchException
 from .checked import to_checked
 from .created import from_created
-from .exception import OpenAIBatchException, StatusInterrupt
+from .exception import StatusInterrupt
 from .stopped import to_canceled, to_completed, to_failed
 from .utils import load_cls
 

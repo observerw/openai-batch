@@ -14,7 +14,7 @@ from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
 from pydantic import BaseModel, Field, model_validator
 
-from .status.exception import OpenAIBatchException
+from .exception import OpenAIBatchException
 
 type Endpoint = Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"]
 

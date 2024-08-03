@@ -18,11 +18,11 @@ from sqlmodel import select
 from .. import runner, scripts
 from ..const import CHUNK_SIZE, MAX_FILE_SIZE
 from ..db import schema, works_db
+from ..exception import OpenAIBatchException
 from ..model import BatchInputItem, BatchRequestInputItem, WorkConfig
 from ..openai import openai_file
 from ..openai.upload import UploadStatus
 from ..utils import to_minutes
-from .exception import OpenAIBatchException
 from .utils import cron_name
 
 logger = logging.getLogger(__name__)
