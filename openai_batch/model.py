@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Iterable, Literal, Union
+from typing import Iterable, Literal, Self, Union
 
 from openai.types.batch import Batch
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
@@ -14,6 +14,10 @@ from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat_model import ChatModel
 from pydantic import BaseModel, Field, model_validator
 
+from .status.exception import OpenAIBatchException
+
+type Endpoint = Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"]
+
 
 class WorkConfig(BaseModel):
     """Work configuration.
@@ -22,7 +26,7 @@ class WorkConfig(BaseModel):
         name (str, optional): Name of the work. Defaults to None.
         completion_window (timedelta, optional): Time window to wait for the completion. Defaults to 24 hours.
         check_interval (timedelta, optional): Interval to check the work status. Defaults to 4 hours.
-        endpoint (Literal["/v1/chat/completions", "/v1/embeddings"], optional): Endpoint to use. Defaults to "/v1/chat/completions".
+        endpoint (Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"], optional): Endpoint to use. Defaults to "/v1/chat/completions".
         allow_same_dataset (bool, optional): Allow the same dataset to be processed multiple times. Defaults to False.
         clean_up (bool, optional): Clean up the work after completion. Defaults to True.
     """
@@ -30,7 +34,7 @@ class WorkConfig(BaseModel):
     name: str | None = None
     completion_window: timedelta = timedelta(hours=24)
     check_interval: timedelta = timedelta(hours=4)
-    endpoint: Literal["/v1/chat/completions", "/v1/embeddings"] = "/v1/chat/completions"
+    endpoint: Endpoint = "/v1/chat/completions"
     allow_same_dataset: bool = False
     clean_up: bool = True
 
@@ -92,7 +96,7 @@ class BatchRequestInputItem(BaseModel):
 
     custom_id: str
     method: Literal["POST"]
-    url: Literal["/v1/chat/completions", "/v1/embeddings"]
+    url: Endpoint
     body: CompletionCreateParams
 
     @classmethod
@@ -122,7 +126,7 @@ class BatchRequestOutputItem(BaseModel):
         body: ChatCompletion
 
     class Error(BaseModel):
-        code: int
+        code: str
         message: str
 
     id: str
@@ -153,14 +157,25 @@ class BatchRequestOutputItem(BaseModel):
             error=error_message,
         )
 
+    def to_error_output(self) -> BatchErrorItem | None:
+        if self.error:
+            return BatchErrorItem(
+                batch_id=self.custom_id,
+                id=self.id,
+                code=self.error.code,
+                message=self.error.message,
+            )
+
+        return None
+
 
 class BatchStatus(BaseModel):
     """
     Status object that extracts information from a `Batch`.
     """
 
-    batch: Batch | None = None
-    message: str
+    batch: Batch
+    """Batch object, None only when the batch is not found"""
 
     @property
     def file_id(self) -> str | None:
@@ -168,38 +183,35 @@ class BatchStatus(BaseModel):
         When status is completed, the output_file_id; or when status is failed, the error_file_id
         """
         match (self.batch, self.status):
-            case Batch(output_file_id=file_id), "success":
+            case (
+                (Batch(output_file_id=file_id), "success")
+                | (Batch(error_file_id=file_id), "failed")
+            ):
                 return file_id
-            case Batch(error_file_id=file_id), "failed":
-                return file_id
-
-        return None
+            case _:
+                return None
 
     @property
-    def status(self) -> Literal["success", "in_progress", "failed"] | None:
+    def status(self) -> Literal["success", "in_progress", "failed"]:
         match self.batch:
             case Batch(status="completed"):
                 return "success"
             case Batch(status="failed" | "cancelled" | "expired"):
                 return "failed"
-            case Batch():
+            case Batch():  # validating, in_progress, finalizing, cancelling
                 return "in_progress"
-            case _:
-                return None
 
     @property
-    def batch_id(self) -> str | None:
-        return self.batch and self.batch.id
+    def batch_id(self) -> str:
+        return self.batch.id
 
-    @classmethod
-    def from_batch(cls, batch: Batch) -> "BatchStatus":
-        status = cls(batch=batch, message=batch.status)
-
-        match status:
+    @model_validator(mode="after")
+    def _validate(self) -> Self:
+        match self:
             case BatchStatus(status="success" | "failed" as status, file_id=None):
-                status.message = (
+                raise OpenAIBatchException(
                     f"Batch ended with status {status}"
                     "but corresponding file is missing"
                 )
 
-        return status
+        return self

@@ -18,13 +18,13 @@ poetry add openai-batch
 
 ## Config
 
-|         Name         |         Type         |                                       Description                                       |
-| :------------------: | :------------------: | :-------------------------------------------------------------------------------------: |
-|        `name`        |        `str`         |                                    Name of the work.                                    |
-| `completion_window`  | `datetime.timedelta` | Time window for the work to be completed. Only support `timedelta(hours=24)` currently. |
-|      `endpoint`      |        `str`         |    API endpoint. Only support `/v1/chat/completions` and `/v1/embeddings` currently.    |
-| `allow_same_dataset` |        `bool`        |              Whether to allow same dataset to be processed multiple times.              |
-|      `clean_up`      |        `bool`        |                     Whether to clean up the work after completion.                      |
+|         Name         |         Type         |                                             Description                                              |
+| :------------------: | :------------------: | :--------------------------------------------------------------------------------------------------: |
+|        `name`        |        `str`         |                                          Name of the work.                                           |
+| `completion_window`  | `datetime.timedelta` |       Time window for the work to be completed. Only support `timedelta(hours=24)` currently.        |
+|      `endpoint`      |        `str`         | API endpoint. Only support `/v1/chat/completions`, `/v1/completions` and `/v1/embeddings` currently. |
+| `allow_same_dataset` |        `bool`        |                    Whether to allow same dataset to be processed multiple times.                     |
+|      `clean_up`      |        `bool`        |                            Whether to clean up the work after completion.                            |
 
 ## Methods
 
